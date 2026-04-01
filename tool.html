@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Budget Tracker</title>
+<style>
+  :root {
+    --primary: {{config.primaryColor}};
+    --primary-light: color-mix(in srgb, var(--primary) 15%, white);
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --text-light: #94a3b8;
+    --green: #10b981;
+    --green-bg: #d1fae5;
+    --amber: #f59e0b;
+    --amber-bg: #fef3c7;
+    --red: #ef4444;
+    --red-bg: #fee2e2;
+    --blue: #3b82f6;
+    --blue-bg: #dbeafe;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.1);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+  /* ---- LAYOUT ---- */
+  .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; display: flex; align-items: center; gap: 12px; height: 52px; flex-shrink: 0; }
+  .header-title { font-size: 15px; font-weight: 700; color: var(--text); }
+  .header-subtitle { font-size: 12px; color: var(--text-muted); }
+  .header-spacer { flex: 1; }
+
+  /* ---- METRIC BAR ---- */
+  .metric-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 16px; display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+  .metric-card { flex: 1; min-width: 120px; max-width: 220px; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); }
+  .metric-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 2px; }
+  .metric-value { font-size: 18px; font-weight: 700; color: var(--text); }
+  .metric-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+  .metric-card.rag-green { border-color: var(--green); background: var(--green-bg); }
+  .metric-card.rag-amber { border-color: var(--amber); background: var(--amber-bg); }
+  .metric-card.rag-red { border-color: var(--red); background: var(--red-bg); }
+
+  /* ---- TAB NAV ---- */
+  .tab-nav { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; padding: 0 16px; }
+  .tab-btn { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--text-muted); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+  /* ---- TOOLBAR ---- */
+  .toolbar { padding: 8px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  /* ---- MAIN CONTENT ---- */
+  .main { flex: 1; overflow: auto; }
+  .view { display: none; padding: 16px; }
+  .view.active { display: block; }
+
+  /* ---- BUTTONS ---- */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; white-space: nowrap; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover:not(:disabled) { filter: brightness(0.9); }
+  .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+  .btn-secondary:hover:not(:disabled) { background: var(--bg); }
+  .btn-ghost { background: transparent; color: var(--text-muted); border-color: transparent; }
+  .btn-ghost:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+  .btn-danger { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+  .btn-danger:hover:not(:disabled) { background: var(--red); color: white; }
+  .btn-sm { padding: 3px 8px; font-size: 11px; }
+  .btn-icon { padding: 4px 6px; }
+
+  /* ---- BUDGET TABLE ---- */
+  .budget-table-wrap { overflow-x: auto; }
+  .budget-table { width: 100%; border-collapse: collapse; min-width: 700px; }
+  .budget-table th { background: var(--bg); color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 10px; text-align: right; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  .budget-table th:first-child { text-align: left; }
+  .budget-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); text-align: right; vertical-align: middle; }
+  .budget-table td:first-child { text-align: left; }
+  .budget-table tr:hover td { background: #f8fafc; }
+
+  /* Category header row */
+  .cat-header-row td { background: #f1f5f9; font-weight: 600; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; padding: 6px 10px; }
+  .cat-header-row:hover td { background: #e2e8f0; }
+  .cat-toggle { display: inline-block; width: 14px; text-align: center; margin-right: 4px; font-size: 10px; }
+
+  /* Category subtotal row */
+  .subtotal-row td { background: #f8fafc; font-weight: 600; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+
+  /* Section total rows */
+  .section-total-row td { background: #e2e8f0; font-weight: 700; font-size: 13px; border-top: 2px solid var(--border-strong); border-bottom: 2px solid var(--border-strong); }
+  .net-row td { background: #0f172a; color: white; font-weight: 700; font-size: 14px; border-top: 2px solid #0f172a; }
+  .net-row td.positive { color: #6ee7b7; }
+  .net-row td.negative { color: #fca5a5; }
+
+  /* Line item row */
+  .item-row td { font-size: 13px; }
+  .item-desc { display: flex; align-items: center; gap: 6px; }
+  .item-desc-text { flex: 1; min-width: 0; }
+  .item-actions { opacity: 0; display: flex; gap: 2px; }
+  .item-row:hover .item-actions { opacity: 1; }
+
+  /* Quick add row */
+  .quick-add-row td { padding: 4px 10px; }
+  .quick-add-input { width: 100%; border: 1px dashed var(--border-strong); border-radius: 4px; padding: 4px 8px; font-size: 12px; color: var(--text-muted); background: transparent; outline: none; }
+  .quick-add-input:focus { border-color: var(--primary); color: var(--text); background: white; }
+
+  /* Inline edit cell */
+  .cell-edit { display: none; }
+  .cell-display { display: block; }
+  td.editing .cell-display { display: none; }
+  td.editing .cell-edit { display: block; }
+  .inline-input { width: 100%; text-align: right; border: 1px solid var(--primary); border-radius: 4px; padding: 2px 6px; font-size: 13px; outline: none; font-family: inherit; }
+
+  /* ---- RAG BADGES ---- */
+  .rag { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+  .rag-green { background: var(--green); }
+  .rag-amber { background: var(--amber); }
+  .rag-red { background: var(--red); }
+  .rag-grey { background: #d1d5db; }
+
+  /* Variance colouring */
+  .var-positive { color: var(--green); font-weight: 500; }
+  .var-negative { color: var(--red); font-weight: 500; }
+  .var-zero { color: var(--text-muted); }
+
+  /* Confirmed badge */
+  .confirmed-badge { font-size: 10px; font-weight: 600; color: var(--green); background: var(--green-bg); border-radius: 4px; padding: 1px 5px; }
+  .unconfirmed-badge { font-size: 10px; font-weight: 600; color: var(--text-muted); background: #f1f5f9; border-radius: 4px; padding: 1px 5px; }
+
+  /* ---- PROCUREMENT STATUS BADGES ---- */
+  .proc-badge { font-size: 10px; font-weight: 600; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  .proc-unmatched { background: #dbeafe; color: #1d4ed8; }
+  .proc-uninvoiced { background: var(--amber-bg); color: #92400e; }
+  .proc-pending { background: #fed7aa; color: #9a3412; }
+  .proc-confirmed { background: var(--green-bg); color: #065f46; }
+
+  /* ---- FILTER BAR ---- */
+  .filter-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .filter-btn { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; }
+  .filter-btn:hover { background: var(--bg); }
+  .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+  .filter-count { background: rgba(255,255,255,0.25); border-radius: 10px; padding: 0 5px; font-size: 10px; }
+
+  /* ---- CATEGORIES SIDEBAR ---- */
+  .layout-with-sidebar { display: flex; gap: 0; height: 100%; }
+  .sidebar { width: 220px; min-width: 220px; border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; flex-shrink: 0; }
+  .sidebar-section { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .sidebar-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); padding: 4px 12px 2px; }
+  .cat-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; border-left: 3px solid transparent; }
+  .cat-item:hover { background: var(--bg); }
+  .cat-item.active { background: var(--primary-light); border-left-color: var(--primary); }
+  .cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .cat-name { flex: 1; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cat-count { font-size: 10px; color: var(--text-muted); background: var(--bg); border-radius: 10px; padding: 0 5px; }
+  .cat-item.hidden-cat .cat-name { color: var(--text-light); text-decoration: line-through; }
+  .sidebar-footer { padding: 8px 12px; }
+  .sidebar-content { flex: 1; overflow-y: auto; }
+
+  /* ---- SCENARIOS VIEW ---- */
+  .scenario-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .scenario-tab { padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); background: none; border-top: none; border-left: none; border-right: none; }
+  .scenario-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .scenario-section { margin-bottom: 24px; }
+  .scenario-section h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; }
+  .multiplier-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .multiplier-label { flex: 1; font-size: 13px; }
+  .multiplier-input { width: 70px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; text-align: right; }
+  .multiplier-pct { font-size: 11px; color: var(--text-muted); width: 30px; }
+
+  /* Comparison table */
+  .comparison-table { width: 100%; border-collapse: collapse; }
+  .comparison-table th { background: var(--bg); padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); border-bottom: 2px solid var(--border); text-align: right; }
+  .comparison-table th:first-child { text-align: left; }
+  .comparison-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); text-align: right; font-size: 13px; }
+  .comparison-table td:first-child { text-align: left; }
+  .col-base { background: transparent; }
+  .col-best { background: #f0fdf4; }
+  .col-best th, .col-best td { color: #166534; }
+  .col-downturn { background: #fff7ed; }
+  .col-downturn th, .col-downturn td { color: #9a3412; }
+  .comparison-table .total-row td { font-weight: 700; background: var(--bg); border-top: 2px solid var(--border); }
+  .comparison-table .net-row-comp td { font-weight: 700; background: #0f172a; color: white; border-top: 2px solid #0f172a; }
+  .delta-positive { font-size: 10px; color: var(--green); font-weight: 600; }
+  .delta-negative { font-size: 10px; color: var(--red); font-weight: 600; }
+
+  /* ---- MODALS ---- */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+  .modal { background: var(--surface); border-radius: 12px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+  .modal-lg { max-width: 680px; }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .modal-header h2 { font-size: 16px; font-weight: 700; flex: 1; }
+  .modal-body { padding: 20px; }
+  .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ---- FORMS ---- */
+  .form-group { margin-bottom: 14px; }
+  .form-row { display: flex; gap: 12px; }
+  .form-row .form-group { flex: 1; }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .form-label .req { color: var(--red); }
+  .form-input, .form-select, .form-textarea { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface); outline: none; transition: border-color 0.15s; }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--primary); }
+  .form-textarea { resize: vertical; min-height: 60px; }
+  .form-hint { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  .form-currency { position: relative; }
+  .form-currency .currency-sym { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+  .form-currency .form-input { padding-left: 24px; }
+  .form-checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .form-checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--primary); }
+  .form-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 16px 0 8px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .color-swatches { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .color-swatch { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+  .color-swatch.selected { border-color: var(--text); }
+
+  /* ---- PRINT STYLES ---- */
+  @media print {
+    .header, .tab-nav, .toolbar, .metric-bar { display: none !important; }
+    .app { height: auto; overflow: visible; }
+    .main { overflow: visible; }
+    .view.active { display: block !important; }
+    .print-only { display: block !important; }
+    .no-print { display: none !important; }
+    .budget-table th, .budget-table td { font-size: 11px; padding: 4px 6px; }
+    @page { margin: 15mm; }
+  }
+  .print-only { display: none; }
+
+  /* ---- EMPTY STATE ---- */
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+  .empty-state-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state h3 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+
+  /* ---- ALERTS ---- */
+  .alert { padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 8px; }
+  .alert-warning { background: var(--amber-bg); color: #92400e; border: 1px solid var(--amber); }
+  .alert-info { background: var(--blue-bg); color: #1e40af; border: 1px solid var(--blue); }
+
+  /* ---- SETTINGS PANEL ---- */
+  .settings-panel { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 20px; max-width: 600px; }
+  .settings-section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .settings-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .settings-section h3 { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+
+  /* ---- RESPONSIVE ---- */
+  @media (max-width: 640px) {
+    .sidebar { display: none; }
+    .budget-table th:nth-child(5), .budget-table td:nth-child(5) { display: none; }
+    .metric-card { min-width: 100px; }
+    .form-row { flex-direction: column; gap: 0; }
+  }
+
+  /* ---- TYPE BADGE ---- */
+  .type-badge { font-size: 10px; font-weight: 600; border-radius: 4px; padding: 1px 5px; }
+  .type-cost { background: #fee2e2; color: #991b1b; }
+  .type-revenue { background: #d1fae5; color: #065f46; }
+
+  /* ---- EXPORT PREVIEW ---- */
+  .print-header { margin-bottom: 24px; }
+  .print-header h1 { font-size: 22px; font-weight: 800; }
+  .print-header p { color: var(--text-muted); font-size: 12px; }
+  .print-metrics { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .print-metric { flex: 1; min-width: 100px; }
+  .print-metric-label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
+  .print-metric-value { font-size: 16px; font-weight: 700; }
+</style>
+</head>
+<body>
+<!-- PART 1 complete: head + CSS -->
+
+<div class="app" id="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div>
+      <div class="header-title" id="header-event-name">Event Budget Tracker</div>
+      <div class="header-subtitle" id="header-company-name">Loading…</div>
+    </div>
+    <div class="header-spacer"></div>
+    <button class="btn btn-secondary btn-sm no-print" onclick="openSettingsModal()">⚙ Settings</button>
+    <div class="no-print" style="display:flex;gap:6px;">
+      <button class="btn btn-secondary btn-sm" onclick="exportCSV()">↓ CSV</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportPrint()">🖨 PDF</button>
+    </div>
+  </header>
+
+  <!-- KEY METRIC BAR (BT.05) -->
+  <div class="metric-bar" id="metric-bar">
+    <div class="metric-card" id="metric-total-budget">
+      <div class="metric-label">Total Budget vs Actual</div>
+      <div class="metric-value">—</div>
+      <div class="metric-sub">Loading…</div>
+    </div>
+    <div class="metric-card" id="metric-cost-attendee">
+      <div class="metric-label">Cost / Attendee</div>
+      <div class="metric-value">—</div>
+      <div class="metric-sub">Set attendee target</div>
+    </div>
+    <div class="metric-card" id="metric-rev-attendee">
+      <div class="metric-label">Revenue / Attendee</div>
+      <div class="metric-value">—</div>
+      <div class="metric-sub">Set attendee target</div>
+    </div>
+    <div class="metric-card" id="metric-net-margin">
+      <div class="metric-label">Net Margin</div>
+      <div class="metric-value">—</div>
+      <div class="metric-sub">Revenue − Costs</div>
+    </div>
+    <div class="metric-card" id="metric-utilisation">
+      <div class="metric-label">Budget Utilisation</div>
+      <div class="metric-value">—</div>
+      <div class="metric-sub">Actual / Budget</div>
+    </div>
+  </div>
+
+  <!-- TAB NAV -->
+  <nav class="tab-nav no-print">
+    <button class="tab-btn active" onclick="switchTab('budget')" id="tab-budget">💰 Budget Table</button>
+    <button class="tab-btn" onclick="switchTab('scenarios')" id="tab-scenarios">📊 Scenarios</button>
+    <button class="tab-btn" onclick="switchTab('procurement')" id="tab-procurement">📋 Procurement</button>
+    <button class="tab-btn" onclick="switchTab('categories')" id="tab-categories">🏷 Categories</button>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ====== BUDGET TABLE VIEW (BT.04) ====== -->
+    <div class="view active" id="view-budget">
+      <!-- Toolbar -->
+      <div class="toolbar no-print">
+        <button class="btn btn-primary btn-sm" onclick="openItemModal(null, null)">+ Add Line Item</button>
+        <div class="filter-bar" id="budget-filter-bar">
+          <button class="filter-btn active" onclick="setBudgetFilter('all')" id="filter-all">All</button>
+          <button class="filter-btn" onclick="setBudgetFilter('cost')" id="filter-cost">Costs</button>
+          <button class="filter-btn" onclick="setBudgetFilter('revenue')" id="filter-revenue">Revenue</button>
+          <button class="filter-btn" onclick="setBudgetFilter('issues')" id="filter-issues">⚠ Issues</button>
+        </div>
+        <div class="toolbar-right">
+          <select class="form-select" style="width:auto;font-size:12px;padding:4px 8px;" onchange="setBudgetSort(this.value)" id="budget-sort-select">
+            <option value="default">Default order</option>
+            <option value="variance-worst">Worst variance first</option>
+            <option value="budget-desc">Highest budget first</option>
+          </select>
+        </div>
+      </div>
+      <div style="padding:0 16px 16px;">
+        <div class="budget-table-wrap">
+          <table class="budget-table" id="budget-table">
+            <thead>
+              <tr>
+                <th style="min-width:260px;">Description</th>
+                <th style="width:110px;">Budget</th>
+                <th style="width:110px;">Actual</th>
+                <th style="width:110px;">Variance</th>
+                <th style="width:70px;">Var %</th>
+                <th style="width:36px;">RAG</th>
+                <th style="width:90px;" class="no-print">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="budget-tbody">
+              <tr><td colspan="7" class="empty-state"><div class="empty-state-icon">💰</div><h3>Loading budget…</h3></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== SCENARIOS VIEW (BT.06) ====== -->
+    <div class="view" id="view-scenarios">
+      <div class="toolbar no-print">
+        <button class="btn btn-secondary btn-sm" onclick="toggleDeltaColumns()" id="delta-toggle">Show Deltas</button>
+        <span style="font-size:12px;color:var(--text-muted);">Set category multipliers to model different financial outcomes.</span>
+      </div>
+      <div style="padding:0 16px 16px;">
+        <div class="scenario-tabs">
+          <button class="scenario-tab active" onclick="switchScenarioTab('compare')" id="stab-compare">Comparison View</button>
+          <button class="scenario-tab" onclick="switchScenarioTab('base')" id="stab-base">Base Case</button>
+          <button class="scenario-tab" onclick="switchScenarioTab('best')" id="stab-best">Best Case</button>
+          <button class="scenario-tab" onclick="switchScenarioTab('downturn')" id="stab-downturn">Downturn</button>
+        </div>
+        <div id="scenario-content"><!-- rendered by JS --></div>
+      </div>
+    </div>
+
+    <!-- ====== PROCUREMENT VIEW (BT.07) ====== -->
+    <div class="view" id="view-procurement">
+      <div class="toolbar no-print">
+        <div class="filter-bar" id="procurement-filter-bar">
+          <button class="filter-btn active" onclick="setProcFilter('all')" id="pf-all">All <span class="filter-count" id="pfc-all">0</span></button>
+          <button class="filter-btn" onclick="setProcFilter('unmatched')" id="pf-unmatched">No PO <span class="filter-count" id="pfc-unmatched">0</span></button>
+          <button class="filter-btn" onclick="setProcFilter('uninvoiced')" id="pf-uninvoiced">PO Only <span class="filter-count" id="pfc-uninvoiced">0</span></button>
+          <button class="filter-btn" onclick="setProcFilter('pending_confirm')" id="pf-pending">Invoiced <span class="filter-count" id="pfc-pending">0</span></button>
+          <button class="filter-btn" onclick="setProcFilter('confirmed')" id="pf-confirmed">Confirmed <span class="filter-count" id="pfc-confirmed">0</span></button>
+        </div>
+      </div>
+      <div style="padding:0 16px 16px;">
+        <div class="budget-table-wrap">
+          <table class="budget-table" id="procurement-table">
+            <thead>
+              <tr>
+                <th style="min-width:220px;">Description</th>
+                <th>Category</th>
+                <th>Budget</th>
+                <th>Actual</th>
+                <th>PO Number</th>
+                <th>Invoice Ref</th>
+                <th>Status</th>
+                <th class="no-print">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="procurement-tbody">
+              <tr><td colspan="8" class="empty-state"><div class="empty-state-icon">📋</div><h3>Loading…</h3></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== CATEGORIES VIEW (BT.02) ====== -->
+    <div class="view" id="view-categories">
+      <div class="toolbar no-print">
+        <button class="btn btn-primary btn-sm" onclick="openCategoryModal(null)">+ Add Category</button>
+        <span style="font-size:12px;color:var(--text-muted);">Default categories can be hidden but not deleted.</span>
+      </div>
+      <div style="padding:0 16px 16px;">
+        <div id="categories-list"><!-- rendered by JS --></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ================================================================
+     MODALS
+================================================================ -->
+
+<!-- ITEM MODAL (BT.03 + BT.07) -->
+<div class="modal-overlay" id="item-modal" style="display:none;" onclick="if(event.target===this)closeItemModal()">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 id="item-modal-title">Add Line Item</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeItemModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group" style="flex:2;">
+          <label class="form-label">Description <span class="req">*</span></label>
+          <input class="form-input" id="item-desc" type="text" placeholder="e.g. Main hall hire — 3 days" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category <span class="req">*</span></label>
+          <select class="form-select" id="item-category"></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Budget (Planned)</label>
+          <div class="form-currency">
+            <span class="currency-sym" id="item-budget-sym">£</span>
+            <input class="form-input" id="item-budget" type="text" placeholder="0" inputmode="decimal">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Actual (Spent)</label>
+          <div class="form-currency">
+            <span class="currency-sym" id="item-actual-sym">£</span>
+            <input class="form-input" id="item-actual" type="text" placeholder="0" inputmode="decimal">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="form-checkbox-row">
+          <input type="checkbox" id="item-confirmed">
+          <label for="item-confirmed" style="font-size:13px;">Actual amount is confirmed (invoiced and reconciled)</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="item-notes" placeholder="Any additional context…"></textarea>
+      </div>
+
+      <div class="form-section-title">Procurement (optional)</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">PO Number</label>
+          <input class="form-input" id="item-po" type="text" placeholder="e.g. PO-2026-0142">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Invoice Reference</label>
+          <input class="form-input" id="item-invoice" type="text" placeholder="e.g. INV-2026-0089">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Supplier</label>
+        <input class="form-input" id="item-supplier" type="text" placeholder="e.g. AV Solutions Ltd">
+      </div>
+
+      <div class="form-section-title">Scenario Overrides (optional)</div>
+      <div class="form-hint" style="margin-bottom:8px;">Override the calculated scenario budget for this specific line item. Leave blank to use the category multiplier.</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Best Case Override</label>
+          <div class="form-currency">
+            <span class="currency-sym" id="item-best-sym">£</span>
+            <input class="form-input" id="item-best-override" type="text" placeholder="blank = use multiplier" inputmode="decimal">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Downturn Override</label>
+          <div class="form-currency">
+            <span class="currency-sym" id="item-downturn-sym">£</span>
+            <input class="form-input" id="item-downturn-override" type="text" placeholder="blank = use multiplier" inputmode="decimal">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeItemModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- CATEGORY MODAL (BT.02) -->
+<div class="modal-overlay" id="category-modal" style="display:none;" onclick="if(event.target===this)closeCategoryModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="category-modal-title">Add Category</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeCategoryModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Category Name <span class="req">*</span></label>
+        <input class="form-input" id="cat-name" type="text" placeholder="e.g. Entertainment">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select class="form-select" id="cat-type">
+          <option value="cost">Cost</option>
+          <option value="revenue">Revenue</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Colour</label>
+        <input class="form-input" id="cat-color" type="color" style="width:60px;height:36px;padding:2px;">
+        <div class="color-swatches" id="cat-color-swatches"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeCategoryModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCategory()">Save Category</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL (BT.01) -->
+<div class="modal-overlay" id="settings-modal" style="display:none;" onclick="if(event.target===this)closeSettingsModal()">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2>Budget Settings</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeSettingsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <h3>Event Details</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Event Name</label>
+            <input class="form-input" id="settings-event-name" type="text">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Expected Attendees</label>
+            <input class="form-input" id="settings-attendees" type="number" min="0" placeholder="e.g. 1200">
+          </div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Variance Thresholds</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Amber Threshold (%)</label>
+            <input class="form-input" id="settings-amber" type="number" min="1" max="50">
+            <div class="form-hint">Items over this variance % turn amber</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Red Threshold (%)</label>
+            <input class="form-input" id="settings-red" type="number" min="5" max="100">
+            <div class="form-hint">Items over this variance % turn red</div>
+          </div>
+        </div>
+        <div class="form-checkbox-row">
+          <input type="checkbox" id="settings-alert-red">
+          <label for="settings-alert-red" style="font-size:13px;">Alert when items exceed red threshold</label>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Data Management</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="loadSampleData()">Load Sample Data</button>
+          <button class="btn btn-danger btn-sm" onclick="clearAllData()">Clear All Data</button>
+        </div>
+        <div class="form-hint" style="margin-top:6px;">Sample data: TechSummit 2026 — 40+ line items across all categories.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeSettingsModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="confirm-modal" style="display:none;">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-header">
+      <h2 id="confirm-title">Confirm</h2>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message" style="font-size:14px;"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="confirmResolve(false)">Cancel</button>
+      <button class="btn btn-danger" id="confirm-ok-btn" onclick="confirmResolve(true)">Delete</button>
+    </div>
+  </div>
+</div>
+<script>
+// EVENTHIVE_CONFIG placeholder — replaced by server at serve time
+var EVENTHIVE_CONFIG = window.EVENTHIVE_CONFIG || {
+  companyName: "My Event",
+  primaryColor: "#3B82F6",
+  currency: "GBP",
+  currencySymbol: "£",
+  currencyLocale: "en-GB",
+  amberThresholdPct: 5,
+  redThresholdPct: 15,
+  defaultContingencyPct: 10,
+  eventSlug: "default"
+};
+// Apply primary color CSS variable
+document.documentElement.style.setProperty('--primary', EVENTHIVE_CONFIG.primaryColor || '#3B82F6');
+
+// ================================================================
+// STORAGE LAYER (BT.01)
+// ================================================================
+var EVENT_SLUG = EVENTHIVE_CONFIG.eventSlug || 'default';
+var LS_KEY = 'eventhive_event_' + EVENT_SLUG + '_budget';
+
+function loadState() {
+  try {
+    var raw = localStorage.getItem(LS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return createDefaultState();
+}
+
+function saveState(st) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(st)); } catch(e) {}
+}
+
+function createDefaultState() {
+  return {
+    version: 1,
+    eventName: EVENTHIVE_CONFIG.companyName || 'My Event',
+    currency: EVENTHIVE_CONFIG.currency || 'GBP',
+    attendeeTarget: 0,
+    categories: getDefaultCategories(),
+    lineItems: [],
+    scenarios: getDefaultScenarios(),
+    settings: {
+      amberThresholdPct: Number(EVENTHIVE_CONFIG.amberThresholdPct) || 5,
+      redThresholdPct: Number(EVENTHIVE_CONFIG.redThresholdPct) || 15,
+      alertOnRedVariance: true
+    }
+  };
+}
+
+// ================================================================
+// DEFAULT CATEGORIES (BT.02)
+// ================================================================
+function getDefaultCategories() {
+  return [
+    { id: 'cat-venue',    name: 'Venue & Facilities',    type: 'cost',    order: 1,  color: '#EF4444', isDefault: true, isHidden: false },
+    { id: 'cat-fb',       name: 'F&B / Catering',        type: 'cost',    order: 2,  color: '#F97316', isDefault: true, isHidden: false },
+    { id: 'cat-av',       name: 'AV & Production',       type: 'cost',    order: 3,  color: '#3B82F6', isDefault: true, isHidden: false },
+    { id: 'cat-travel',   name: 'Travel & Accommodation', type: 'cost',   order: 4,  color: '#8B5CF6', isDefault: true, isHidden: false },
+    { id: 'cat-mktg',     name: 'Marketing & Comms',     type: 'cost',    order: 5,  color: '#EC4899', isDefault: true, isHidden: false },
+    { id: 'cat-staffing', name: 'Staffing',              type: 'cost',    order: 6,  color: '#14B8A6', isDefault: true, isHidden: false },
+    { id: 'cat-tech',     name: 'Technology',            type: 'cost',    order: 7,  color: '#6366F1', isDefault: true, isHidden: false },
+    { id: 'cat-speaker',  name: 'Speaker Costs',         type: 'cost',    order: 8,  color: '#A855F7', isDefault: true, isHidden: false },
+    { id: 'cat-insurance',name: 'Insurance & Legal',     type: 'cost',    order: 9,  color: '#64748B', isDefault: true, isHidden: false },
+    { id: 'cat-contingency',name:'Contingency',          type: 'cost',    order: 10, color: '#9CA3AF', isDefault: true, isHidden: false },
+    { id: 'cat-sponsor',  name: 'Sponsor Revenue',       type: 'revenue', order: 11, color: '#10B981', isDefault: true, isHidden: false },
+    { id: 'cat-reg',      name: 'Registration Revenue',  type: 'revenue', order: 12, color: '#22C55E', isDefault: true, isHidden: false },
+    { id: 'cat-exhib',    name: 'Exhibition Revenue',    type: 'revenue', order: 13, color: '#059669', isDefault: true, isHidden: false },
+    { id: 'cat-other-rev',name: 'Other Revenue',         type: 'revenue', order: 14, color: '#34D399', isDefault: true, isHidden: false }
+  ];
+}
+
+function getDefaultScenarios() {
+  return {
+    base: {
+      label: 'Base Case',
+      description: 'Current plan — approved budget',
+      multipliers: {}
+    },
+    best: {
+      label: 'Best Case',
+      description: 'Full sponsor uptake, early-bird pricing holds',
+      multipliers: {
+        'Sponsor Revenue': 1.15,
+        'Registration Revenue': 1.10,
+        'Exhibition Revenue': 1.10
+      }
+    },
+    downturn: {
+      label: 'Downturn',
+      description: '20% fewer sponsors, cost increases on variable items',
+      multipliers: {
+        'Sponsor Revenue': 0.80,
+        'Registration Revenue': 0.90,
+        'F&B / Catering': 1.15,
+        'AV & Production': 1.10,
+        'Marketing & Comms': 0.70
+      }
+    }
+  };
+}
+
+// ================================================================
+// CURRENCY UTILS (BT.01)
+// ================================================================
+function formatCurrency(amount) {
+  if (amount === null || amount === undefined || isNaN(amount)) return '—';
+  var locale = EVENTHIVE_CONFIG.currencyLocale || 'en-GB';
+  var currency = EVENTHIVE_CONFIG.currency || 'GBP';
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+  } catch(e) {
+    var sym = EVENTHIVE_CONFIG.currencySymbol || '£';
+    return sym + Math.round(Math.abs(amount)).toLocaleString();
+  }
+}
+
+function parseCurrencyInput(str) {
+  if (!str || str === '') return 0;
+  var n = parseFloat(String(str).replace(/[^0-9.-]/g, ''));
+  return isNaN(n) ? 0 : Math.max(0, n);
+}
+
+function formatVariance(variance, pct) {
+  if (variance === 0) return '<span class="var-zero">—</span>';
+  var sign = variance > 0 ? '+' : '';
+  var cls = variance > 0 ? 'var-positive' : 'var-negative';
+  return '<span class="' + cls + '">' + sign + formatCurrency(variance) + '</span>';
+}
+
+function formatVarPct(pct) {
+  if (pct === 0 || !pct) return '<span class="var-zero">0%</span>';
+  var sign = pct > 0 ? '+' : '';
+  var cls = pct > 0 ? 'var-positive' : 'var-negative';
+  return '<span class="' + cls + '">' + sign + pct.toFixed(1) + '%</span>';
+}
+
+// ================================================================
+// RAG STATUS CALCULATION (BT.03)
+// ================================================================
+function calculateRAG(item, settings, categoryType) {
+  if (!item.actual || item.actual === 0) return 'grey';
+  if (!item.budget || item.budget === 0) return 'grey';
+  var variancePct = Math.abs((item.budget - item.actual) / item.budget) * 100;
+  // For revenue items: actual < budget is bad
+  var isOver = (categoryType === 'revenue')
+    ? item.actual < item.budget
+    : item.actual > item.budget;
+  if (!isOver) return 'green';
+  if (variancePct >= (settings.redThresholdPct || 15)) return 'red';
+  if (variancePct >= (settings.amberThresholdPct || 5)) return 'amber';
+  return 'green';
+}
+
+function ragBadgeHtml(rag) {
+  var cls = rag === 'green' ? 'rag-green' : rag === 'amber' ? 'rag-amber' : rag === 'red' ? 'rag-red' : 'rag-grey';
+  return '<span class="rag ' + cls + '" title="' + rag + '"></span>';
+}
+
+// Recompute item variance + RAG
+function recomputeItem(item, categories, settings) {
+  var cat = categories.find(function(c) { return c.id === item.categoryId; });
+  var catType = cat ? cat.type : 'cost';
+  item.variance = (item.budget || 0) - (item.actual || 0);
+  item.variancePct = item.budget ? (item.variance / item.budget) * 100 : 0;
+  item.status = calculateRAG(item, settings, catType);
+  return item;
+}
+
+// ================================================================
+// PROCUREMENT STATUS (BT.07)
+// ================================================================
+function getProcurementStatus(item) {
+  if (!item.budget || item.budget === 0) return 'na';
+  if (!item.poNumber && !item.invoiceRef) return 'unmatched';
+  if (item.poNumber && !item.invoiceRef) return 'uninvoiced';
+  if (item.poNumber && item.invoiceRef && !item.isConfirmed) return 'pending_confirm';
+  if (item.isConfirmed) return 'confirmed';
+  return 'unmatched';
+}
+
+function procBadgeHtml(status) {
+  var labels = { unmatched: 'No PO', uninvoiced: 'PO Only', pending_confirm: 'Invoiced', confirmed: 'Confirmed', na: '—' };
+  var classes = { unmatched: 'proc-unmatched', uninvoiced: 'proc-uninvoiced', pending_confirm: 'proc-pending', confirmed: 'proc-confirmed', na: '' };
+  if (status === 'na') return '—';
+  return '<span class="proc-badge ' + (classes[status]||'') + '">' + (labels[status]||status) + '</span>';
+}
+
+// ================================================================
+// SCENARIO CALCULATION (BT.06)
+// ================================================================
+function applyScenario(state, scenarioKey) {
+  var scenario = state.scenarios[scenarioKey];
+  if (!scenario) return state.lineItems.map(function(i) { return Object.assign({}, i, { scenarioBudget: i.budget || 0 }); });
+  return state.lineItems.map(function(item) {
+    var cat = state.categories.find(function(c) { return c.id === item.categoryId; });
+    var catName = cat ? cat.name : '';
+    // Item-level override first
+    var override = item.scenarioOverrides ? item.scenarioOverrides[scenarioKey] : null;
+    if (override !== null && override !== undefined && override !== '') {
+      return Object.assign({}, item, { scenarioBudget: Number(override) });
+    }
+    var multiplier = scenario.multipliers[catName] || 1;
+    return Object.assign({}, item, { scenarioBudget: Math.round((item.budget || 0) * multiplier) });
+  });
+}
+
+function calcScenarioTotals(state, scenarioKey) {
+  var items = applyScenario(state, scenarioKey);
+  var costs = 0, revenue = 0;
+  items.forEach(function(item) {
+    var cat = state.categories.find(function(c) { return c.id === item.categoryId; });
+    if (cat && cat.type === 'cost') costs += item.scenarioBudget || 0;
+    else if (cat && cat.type === 'revenue') revenue += item.scenarioBudget || 0;
+  });
+  return { costs: costs, revenue: revenue, net: revenue - costs };
+}
+
+// ================================================================
+// UTILITY HELPERS
+// ================================================================
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function getCategoryById(state, id) {
+  return state.categories.find(function(c) { return c.id === id; });
+}
+
+function getVisibleCategories(state) {
+  return state.categories.filter(function(c) { return !c.isHidden; }).sort(function(a,b) { return a.order - b.order; });
+}
+
+function calcSubtotals(items) {
+  var budget = 0, actual = 0;
+  items.forEach(function(i) { budget += i.budget || 0; actual += i.actual || 0; });
+  return { budget: budget, actual: actual, variance: budget - actual };
+}
+
+// ================================================================
+// SAMPLE DATA (BT.09 — TechSummit 2026)
+// ================================================================
+function getSampleData() {
+  var cats = getDefaultCategories();
+  var catId = {};
+  cats.forEach(function(c) { catId[c.name] = c.id; });
+
+  function item(catName, desc, budget, actual, po, invoice, confirmed, notes) {
+    var cat = cats.find(function(c) { return c.name === catName; });
+    var it = {
+      id: uuid(), categoryId: cat ? cat.id : cats[0].id,
+      description: desc, budget: budget, actual: actual || 0,
+      variance: 0, variancePct: 0, status: 'grey',
+      poNumber: po || '', invoiceRef: invoice || '',
+      supplierRef: '', notes: notes || '',
+      isConfirmed: !!confirmed, tags: [],
+      scenarioOverrides: { best: null, downturn: null }
+    };
+    return it;
+  }
+
+  var items = [
+    // Venue & Facilities
+    item('Venue & Facilities', 'Main hall hire — 3 days', 45000, 47250, 'PO-2026-0101', 'INV-2026-0089', true, 'Late extension +£2,250'),
+    item('Venue & Facilities', 'Meeting rooms × 4', 8000, 8000, 'PO-2026-0102', 'INV-2026-0090', true),
+    item('Venue & Facilities', 'Storage & office space', 1500, 1500, 'PO-2026-0103', 'INV-2026-0091', true),
+    item('Venue & Facilities', 'Car parking — 3 days', 3000, 3200, 'PO-2026-0104'),
+    item('Venue & Facilities', 'Security & stewarding', 6500, 6500, 'PO-2026-0105', 'INV-2026-0092', true),
+
+    // F&B / Catering
+    item('F&B / Catering', 'Day 1 lunch — 1,200 covers', 36000, 34800, 'PO-2026-0201', 'INV-2026-0101', true),
+    item('F&B / Catering', 'Day 2 lunch — 1,100 covers', 33000, 0),
+    item('F&B / Catering', 'Coffee breaks × 4', 12000, 11600, 'PO-2026-0202'),
+    item('F&B / Catering', 'Gala dinner — 300 covers', 22500, 0, 'PO-2026-0203'),
+    item('F&B / Catering', 'VIP hospitality suite', 5000, 4800, 'PO-2026-0204', 'INV-2026-0102', true),
+    item('F&B / Catering', 'Morning pastries & refreshments', 3600, 3600, 'PO-2026-0205', 'INV-2026-0103', true),
+
+    // AV & Production
+    item('AV & Production', 'Main stage — sound, lighting, LED screen', 28000, 29500, 'PO-2026-0301', '', false, 'Over budget due to extra LED panels'),
+    item('AV & Production', 'Breakout rooms × 4 AV packages', 12000, 11800, 'PO-2026-0302', 'INV-2026-0111', true),
+    item('AV & Production', 'Live streaming production', 5000, 5000, 'PO-2026-0303', 'INV-2026-0112', true),
+    item('AV & Production', 'Video recording — main stage', 3500, 3500, 'PO-2026-0304', 'INV-2026-0113', true),
+    item('AV & Production', 'Stage set design & build', 8000, 8500, 'PO-2026-0305'),
+
+    // Travel & Accommodation
+    item('Travel & Accommodation', 'Speaker accommodation — 15 rooms × 2 nights', 9000, 8750, 'PO-2026-0401', 'INV-2026-0121', true),
+    item('Travel & Accommodation', 'Speaker travel allowances', 4500, 3900, 'PO-2026-0402'),
+    item('Travel & Accommodation', 'Staff accommodation — 8 rooms × 2 nights', 4800, 4800, 'PO-2026-0403', 'INV-2026-0122', true),
+    item('Travel & Accommodation', 'Airport transfers', 1200, 1100, 'PO-2026-0404', 'INV-2026-0123', true),
+
+    // Marketing & Comms
+    item('Marketing & Comms', 'Digital advertising — LinkedIn, Google', 18000, 16500, 'PO-2026-0501', 'INV-2026-0131', true),
+    item('Marketing & Comms', 'Email campaign platform', 1500, 1500, 'PO-2026-0502', 'INV-2026-0132', true),
+    item('Marketing & Comms', 'Event branding & print materials', 4500, 4800, 'PO-2026-0503'),
+    item('Marketing & Comms', 'PR agency retainer', 6000, 6000, 'PO-2026-0504', 'INV-2026-0133', true),
+    item('Marketing & Comms', 'Social media content creation', 3000, 2800, 'PO-2026-0505', 'INV-2026-0134', true),
+
+    // Staffing
+    item('Staffing', 'Event management team (3 × 5 days)', 15000, 15000, 'PO-2026-0601', 'INV-2026-0141', true),
+    item('Staffing', 'Registration desk staff (8 × 2 days)', 4800, 4800, 'PO-2026-0602', 'INV-2026-0142', true),
+    item('Staffing', 'Tech support staff (4 × 2 days)', 3200, 3200, 'PO-2026-0603', 'INV-2026-0143', true),
+    item('Staffing', 'Volunteer coordination', 800, 800, 'PO-2026-0604', 'INV-2026-0144', true),
+
+    // Technology
+    item('Technology', 'Event app / mobile platform', 8000, 8000, 'PO-2026-0701', 'INV-2026-0151', true),
+    item('Technology', 'Registration & ticketing system', 3500, 3500, 'PO-2026-0702', 'INV-2026-0152', true),
+    item('Technology', 'Networking platform licence', 4000, 4000, 'PO-2026-0703', 'INV-2026-0153', true),
+    item('Technology', 'Wi-Fi infrastructure hire', 6000, 6400, 'PO-2026-0704'),
+
+    // Speaker Costs
+    item('Speaker Costs', 'Keynote speaker — headline', 15000, 15000, 'PO-2026-0801', 'INV-2026-0161', true),
+    item('Speaker Costs', 'Keynote speaker — day 2', 10000, 10000, 'PO-2026-0802', 'INV-2026-0162', true),
+    item('Speaker Costs', 'Panel moderators × 3', 4500, 4500, 'PO-2026-0803'),
+    item('Speaker Costs', 'Workshop facilitators × 4', 6000, 0),
+
+    // Insurance & Legal
+    item('Insurance & Legal', 'Event liability insurance', 3500, 3500, 'PO-2026-0901', 'INV-2026-0171', true),
+    item('Insurance & Legal', 'Contract legal review', 1500, 1500, 'PO-2026-0902', 'INV-2026-0172', true),
+    item('Insurance & Legal', 'GDPR compliance consultancy', 1000, 1000, 'PO-2026-0903', 'INV-2026-0173', true),
+
+    // Contingency
+    item('Contingency', 'General contingency reserve (10%)', 31200, 0),
+
+    // Sponsor Revenue
+    item('Sponsor Revenue', 'Headline Sponsor — Apex Technologies', 50000, 50000, '', '', true),
+    item('Sponsor Revenue', 'Gold Sponsor × 3 — various', 75000, 75000, '', '', true),
+    item('Sponsor Revenue', 'Silver Sponsor × 5 — various', 50000, 50000, '', '', true),
+    item('Sponsor Revenue', 'Bronze Sponsor × 8 — various', 32000, 24000),
+    item('Sponsor Revenue', 'Media Partner in-kind value', 8000, 8000, '', '', true),
+
+    // Registration Revenue
+    item('Registration Revenue', 'Standard delegate × 423 (£195)', 82485, 82485, '', '', true),
+    item('Registration Revenue', 'VIP delegate × 67 (£395)', 26465, 26465, '', '', true),
+    item('Registration Revenue', 'Group bookings × 8 groups', 15600, 12000),
+    item('Registration Revenue', 'Day pass × 120 (£95)', 11400, 9500),
+
+    // Exhibition Revenue
+    item('Exhibition Revenue', 'Exhibition stands × 30 (£3,000)', 90000, 90000, '', '', true),
+    item('Exhibition Revenue', 'Premium corner stands × 4 (£6,500)', 26000, 26000, '', '', true),
+    item('Exhibition Revenue', 'Startup showcase × 12 (£800)', 9600, 8400),
+
+    // Other Revenue
+    item('Other Revenue', 'Workshop tickets × 45 (£150)', 6750, 6750, '', '', true),
+    item('Other Revenue', 'Roundtable tickets × 20 (£250)', 5000, 5000, '', '', true),
+    item('Other Revenue', 'Online streaming tickets × 300 (£25)', 7500, 7500, '', '', true)
+  ];
+
+  return {
+    version: 1,
+    eventName: 'TechSummit 2026',
+    currency: EVENTHIVE_CONFIG.currency || 'GBP',
+    attendeeTarget: 1200,
+    categories: cats,
+    lineItems: items,
+    scenarios: getDefaultScenarios(),
+    settings: {
+      amberThresholdPct: 5,
+      redThresholdPct: 15,
+      alertOnRedVariance: true
+    }
+  };
+}
+
+// Global app state
+var state = loadState();
+// Re-run RAG on all existing items in case thresholds changed
+state.lineItems.forEach(function(item) { recomputeItem(item, state.categories, state.settings); });
+
+// UI state
+var activeTab = 'budget';
+var activeScenarioTab = 'compare';
+var budgetFilter = 'all';
+var budgetSort = 'default';
+var procFilter = 'all';
+var collapsedCategories = {};
+var showDeltas = false;
+var editingItemId = null;
+var editingCategoryId = null;
+var confirmResolveCallback = null;
+
+// ================================================================
+// RENDER: HEADER + METRIC BAR (BT.05)
+// ================================================================
+function renderHeader() {
+  var el = document.getElementById('header-event-name');
+  if (el) el.textContent = state.eventName || 'Event Budget Tracker';
+  var sub = document.getElementById('header-company-name');
+  if (sub) sub.textContent = EVENTHIVE_CONFIG.companyName || '';
+}
+
+function renderMetricBar() {
+  var costItems = state.lineItems.filter(function(i) {
+    var cat = getCategoryById(state, i.categoryId);
+    return cat && cat.type === 'cost';
+  });
+  var revItems = state.lineItems.filter(function(i) {
+    var cat = getCategoryById(state, i.categoryId);
+    return cat && cat.type === 'revenue';
+  });
+
+  var totalBudget = costItems.reduce(function(s,i) { return s + (i.budget||0); }, 0);
+  var totalActual = costItems.reduce(function(s,i) { return s + (i.actual||0); }, 0);
+  var totalRevBudget = revItems.reduce(function(s,i) { return s + (i.budget||0); }, 0);
+  var totalRevActual = revItems.reduce(function(s,i) { return s + (i.actual||0); }, 0);
+  var attendees = state.attendeeTarget || 0;
+
+  var variance = totalBudget - totalActual;
+  var variancePct = totalBudget ? (variance / totalBudget) * 100 : 0;
+  var netMargin = totalRevBudget - totalBudget;
+  var utilisation = totalBudget ? (totalActual / totalBudget) * 100 : 0;
+
+  // Total budget card
+  var budgetCard = document.getElementById('metric-total-budget');
+  if (budgetCard) {
+    var rag = totalActual > 0 ? calculateRAG({ budget: totalBudget, actual: totalActual }, state.settings, 'cost') : 'grey';
+    budgetCard.className = 'metric-card' + (rag !== 'grey' ? ' rag-' + rag : '');
+    budgetCard.innerHTML = '<div class="metric-label">Total Budget vs Actual</div>' +
+      '<div class="metric-value">' + formatCurrency(totalActual) + '</div>' +
+      '<div class="metric-sub">Budget: ' + formatCurrency(totalBudget) + ' · ' +
+      (variance >= 0 ? '<span style="color:var(--green)">+'+formatCurrency(variance)+' under</span>' : '<span style="color:var(--red)">'+formatCurrency(Math.abs(variance))+' over</span>') + '</div>';
+  }
+
+  // Cost per attendee
+  var cpaCard = document.getElementById('metric-cost-attendee');
+  if (cpaCard) {
+    if (attendees > 0) {
+      cpaCard.innerHTML = '<div class="metric-label">Cost / Attendee</div>' +
+        '<div class="metric-value">' + formatCurrency(totalActual / attendees) + '</div>' +
+        '<div class="metric-sub">Budget: ' + formatCurrency(totalBudget / attendees) + ' per head</div>';
+    } else {
+      cpaCard.innerHTML = '<div class="metric-label">Cost / Attendee</div>' +
+        '<div class="metric-value" style="font-size:13px;color:var(--text-muted)">Set target</div>' +
+        '<div class="metric-sub">Open Settings to set attendee target</div>';
+    }
+  }
+
+  // Revenue per attendee
+  var rpaCard = document.getElementById('metric-rev-attendee');
+  if (rpaCard) {
+    if (attendees > 0) {
+      rpaCard.innerHTML = '<div class="metric-label">Revenue / Attendee</div>' +
+        '<div class="metric-value">' + formatCurrency(totalRevActual / attendees) + '</div>' +
+        '<div class="metric-sub">Budget: ' + formatCurrency(totalRevBudget / attendees) + ' per head</div>';
+    } else {
+      rpaCard.innerHTML = '<div class="metric-label">Revenue / Attendee</div>' +
+        '<div class="metric-value" style="font-size:13px;color:var(--text-muted)">Set target</div>' +
+        '<div class="metric-sub">Open Settings to set attendee target</div>';
+    }
+  }
+
+  // Net margin
+  var netCard = document.getElementById('metric-net-margin');
+  if (netCard) {
+    var netActual = totalRevActual - totalActual;
+    netCard.innerHTML = '<div class="metric-label">Net Margin (Actual)</div>' +
+      '<div class="metric-value" style="color:' + (netActual >= 0 ? 'var(--green)' : 'var(--red)') + '">' + formatCurrency(netActual) + '</div>' +
+      '<div class="metric-sub">Budget net: ' + formatCurrency(netMargin) + '</div>';
+  }
+
+  // Utilisation
+  var utilCard = document.getElementById('metric-utilisation');
+  if (utilCard) {
+    utilCard.innerHTML = '<div class="metric-label">Budget Utilisation</div>' +
+      '<div class="metric-value">' + utilisation.toFixed(1) + '%</div>' +
+      '<div class="metric-sub">Actual spend vs budget</div>';
+  }
+}
+
+// ================================================================
+// RENDER: BUDGET TABLE (BT.04)
+// ================================================================
+function renderBudgetTable() {
+  var tbody = document.getElementById('budget-tbody');
+  if (!tbody) return;
+
+  var visibleCats = getVisibleCategories(state).filter(function(cat) {
+    if (budgetFilter === 'cost') return cat.type === 'cost';
+    if (budgetFilter === 'revenue') return cat.type === 'revenue';
+    return true;
+  });
+
+  var rows = [];
+  var totalCostBudget = 0, totalCostActual = 0;
+  var totalRevBudget = 0, totalRevActual = 0;
+
+  visibleCats.forEach(function(cat) {
+    var catItems = state.lineItems.filter(function(i) { return i.categoryId === cat.id; });
+
+    if (budgetFilter === 'issues') {
+      catItems = catItems.filter(function(i) { return i.status === 'amber' || i.status === 'red'; });
+    }
+
+    if (budgetSort === 'variance-worst') {
+      catItems = catItems.slice().sort(function(a,b) { return Math.abs(b.variancePct||0) - Math.abs(a.variancePct||0); });
+    } else if (budgetSort === 'budget-desc') {
+      catItems = catItems.slice().sort(function(a,b) { return (b.budget||0) - (a.budget||0); });
+    }
+
+    var sub = calcSubtotals(catItems);
+    if (cat.type === 'cost') { totalCostBudget += sub.budget; totalCostActual += sub.actual; }
+    else { totalRevBudget += sub.budget; totalRevActual += sub.actual; }
+
+    var isCollapsed = collapsedCategories[cat.id];
+    var itemCount = catItems.length;
+
+    // Category header row
+    rows.push('<tr class="cat-header-row" onclick="toggleCategory(\'' + cat.id + '\')">' +
+      '<td colspan="7"><span class="cat-toggle">' + (isCollapsed ? '▶' : '▼') + '</span>' +
+      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + escHtml(cat.color) + ';margin-right:6px;vertical-align:middle;"></span>' +
+      escHtml(cat.name) + ' <span style="font-weight:400;opacity:0.7;">(' + itemCount + ' item' + (itemCount!==1?'s':'') + ')</span>' +
+      '<span class="type-badge ' + (cat.type==='cost'?'type-cost':'type-revenue') + '" style="float:right;margin-top:1px;">' + cat.type + '</span></td></tr>');
+
+    if (!isCollapsed) {
+      if (catItems.length === 0) {
+        rows.push('<tr class="item-row"><td colspan="7" style="padding:10px 20px;color:var(--text-muted);font-style:italic;font-size:12px;">' +
+          'No items in this category. ' +
+          '<a href="#" onclick="openItemModal(null,\'' + cat.id + '\');return false;" style="color:var(--primary);">Add one →</a></td></tr>');
+      } else {
+        catItems.forEach(function(item) {
+          var varHtml = formatVariance(item.variance, item.variancePct);
+          var varPctHtml = formatVarPct(item.variancePct);
+          rows.push('<tr class="item-row" data-item-id="' + item.id + '">' +
+            '<td><div class="item-desc">' +
+            '<div class="item-desc-text">' + escHtml(item.description) +
+            (item.isConfirmed ? ' <span class="confirmed-badge">✓</span>' : '') +
+            '</div>' +
+            '<div class="item-actions no-print">' +
+            '<button class="btn btn-ghost btn-icon btn-sm" onclick="openItemModal(\'' + item.id + '\',null)" title="Edit">✏</button>' +
+            '<button class="btn btn-ghost btn-icon btn-sm" onclick="deleteItem(\'' + item.id + '\')" title="Delete" style="color:var(--red)">✕</button>' +
+            '</div></div></td>' +
+            '<td class="budget-cell" data-item-id="' + item.id + '" data-field="budget" onclick="startInlineEdit(this,\'' + item.id + '\',\'budget\')">' +
+            '<span class="cell-display">' + formatCurrency(item.budget||0) + '</span>' +
+            '<input class="inline-input cell-edit" type="text" value="' + (item.budget||0) + '" onblur="finishInlineEdit(this,\'' + item.id + '\',\'budget\')" onkeydown="handleInlineKey(event,this,\'' + item.id + '\',\'budget\')">' +
+            '</td>' +
+            '<td class="actual-cell" data-item-id="' + item.id + '" data-field="actual" onclick="startInlineEdit(this,\'' + item.id + '\',\'actual\')">' +
+            '<span class="cell-display">' + formatCurrency(item.actual||0) + '</span>' +
+            '<input class="inline-input cell-edit" type="text" value="' + (item.actual||0) + '" onblur="finishInlineEdit(this,\'' + item.id + '\',\'actual\')" onkeydown="handleInlineKey(event,this,\'' + item.id + '\',\'actual\')">' +
+            '</td>' +
+            '<td>' + varHtml + '</td>' +
+            '<td>' + varPctHtml + '</td>' +
+            '<td>' + ragBadgeHtml(item.status) + '</td>' +
+            '<td class="no-print">' +
+            '<button class="btn btn-ghost btn-icon btn-sm" onclick="openItemModal(\'' + item.id + '\',null)" title="Edit">✏</button>' +
+            '<button class="btn btn-ghost btn-icon btn-sm" onclick="deleteItem(\'' + item.id + '\')" title="Delete" style="color:var(--red)">✕</button>' +
+            '</td></tr>');
+        });
+      }
+
+      // Quick-add row
+      rows.push('<tr class="quick-add-row">' +
+        '<td colspan="7"><input class="quick-add-input" type="text" placeholder="+ Quick add item in ' + escHtml(cat.name) + '…" ' +
+        'onkeydown="handleQuickAdd(event,this,\'' + cat.id + '\')"></td></tr>');
+    }
+
+    // Category subtotal
+    var subVariance = sub.budget - sub.actual;
+    var subVarPct = sub.budget ? (subVariance / sub.budget) * 100 : 0;
+    rows.push('<tr class="subtotal-row">' +
+      '<td style="padding-left:20px;">── Subtotal: ' + escHtml(cat.name) + '</td>' +
+      '<td>' + formatCurrency(sub.budget) + '</td>' +
+      '<td>' + formatCurrency(sub.actual) + '</td>' +
+      '<td>' + formatVariance(subVariance, subVarPct) + '</td>' +
+      '<td>' + formatVarPct(subVarPct) + '</td>' +
+      '<td>' + ragBadgeHtml(calculateRAG({budget:sub.budget,actual:sub.actual}, state.settings, cat.type)) + '</td>' +
+      '<td class="no-print"></td></tr>');
+  });
+
+  // Section totals
+  if (budgetFilter !== 'revenue') {
+    var costVar = totalCostBudget - totalCostActual;
+    rows.push('<tr class="section-total-row"><td>═══ TOTAL COSTS</td>' +
+      '<td>' + formatCurrency(totalCostBudget) + '</td>' +
+      '<td>' + formatCurrency(totalCostActual) + '</td>' +
+      '<td>' + formatVariance(costVar) + '</td>' +
+      '<td></td><td></td><td class="no-print"></td></tr>');
+  }
+  if (budgetFilter !== 'cost') {
+    var revVar = totalRevBudget - totalRevActual;
+    rows.push('<tr class="section-total-row"><td>═══ TOTAL REVENUE</td>' +
+      '<td>' + formatCurrency(totalRevBudget) + '</td>' +
+      '<td>' + formatCurrency(totalRevActual) + '</td>' +
+      '<td>' + formatVariance(revVar) + '</td>' +
+      '<td></td><td></td><td class="no-print"></td></tr>');
+  }
+  if (budgetFilter === 'all') {
+    var netBudget = totalRevBudget - totalCostBudget;
+    var netActual = totalRevActual - totalCostActual;
+    var netCls = netActual >= 0 ? 'positive' : 'negative';
+    rows.push('<tr class="net-row"><td>═══ NET (Revenue − Costs)</td>' +
+      '<td class="' + (netBudget>=0?'positive':'negative') + '">' + formatCurrency(netBudget) + '</td>' +
+      '<td class="' + netCls + '">' + formatCurrency(netActual) + '</td>' +
+      '<td></td><td></td><td></td><td class="no-print"></td></tr>');
+  }
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">💰</div>' +
+      '<h3>No budget items yet</h3><p>Click "+ Add Line Item" to get started, or load sample data in Settings.</p></div></td></tr>';
+  } else {
+    tbody.innerHTML = rows.join('');
+  }
+}
+
+// ================================================================
+// RENDER: SCENARIOS (BT.06)
+// ================================================================
+function renderScenarios() {
+  var el = document.getElementById('scenario-content');
+  if (!el) return;
+
+  // Update tab active state
+  ['compare','base','best','downturn'].forEach(function(k) {
+    var btn = document.getElementById('stab-' + k);
+    if (btn) btn.className = 'scenario-tab' + (activeScenarioTab === k ? ' active' : '');
+  });
+
+  if (activeScenarioTab === 'compare') {
+    renderComparisonView(el);
+  } else {
+    renderScenarioEditor(el, activeScenarioTab);
+  }
+}
+
+function renderComparisonView(el) {
+  var visibleCats = getVisibleCategories(state);
+  var baseItems = applyScenario(state, 'base');
+  var bestItems = applyScenario(state, 'best');
+  var downItems = applyScenario(state, 'downturn');
+
+  function catTotal(items, catId) {
+    return items.filter(function(i) { return i.categoryId === catId; })
+      .reduce(function(s,i) { return s + (i.scenarioBudget||0); }, 0);
+  }
+
+  var bTotals = calcScenarioTotals(state, 'base');
+  var bstTotals = calcScenarioTotals(state, 'best');
+  var dTotals = calcScenarioTotals(state, 'downturn');
+
+  var rows = '';
+  visibleCats.forEach(function(cat) {
+    var base = catTotal(baseItems, cat.id);
+    var best = catTotal(bestItems, cat.id);
+    var down = catTotal(downItems, cat.id);
+    var dBest = best - base;
+    var dDown = down - base;
+    var deltaHtml = showDeltas ? (
+      '<td class="col-best">' + (dBest !== 0 ? '<span class="delta-' + (dBest>0?'positive':'negative') + '">' + (dBest>0?'+':'') + formatCurrency(dBest) + '</span>' : '—') + '</td>' +
+      '<td class="col-downturn">' + (dDown !== 0 ? '<span class="delta-' + (dDown>0?'positive':'negative') + '">' + (dDown>0?'+':'') + formatCurrency(dDown) + '</span>' : '—') + '</td>'
+    ) : '';
+
+    rows += '<tr>' +
+      '<td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + escHtml(cat.color) + ';margin-right:6px;"></span>' + escHtml(cat.name) + '</td>' +
+      '<td class="col-base">' + formatCurrency(base) + '</td>' +
+      '<td class="col-best">' + formatCurrency(best) + '</td>' +
+      '<td class="col-downturn">' + formatCurrency(down) + '</td>' +
+      deltaHtml + '</tr>';
+  });
+
+  var deltaHeaders = showDeltas ? '<th class="col-best">vs Base (+)</th><th class="col-downturn">vs Base (−)</th>' : '';
+
+  el.innerHTML = '<div class="budget-table-wrap"><table class="comparison-table">' +
+    '<thead><tr>' +
+    '<th style="min-width:180px;">Category</th>' +
+    '<th class="col-base">Base Case</th>' +
+    '<th class="col-best">Best Case</th>' +
+    '<th class="col-downturn">Downturn</th>' +
+    deltaHeaders + '</tr></thead><tbody>' + rows +
+    '<tr class="total-row"><td><strong>TOTAL COSTS</strong></td>' +
+    '<td class="col-base"><strong>' + formatCurrency(bTotals.costs) + '</strong></td>' +
+    '<td class="col-best"><strong>' + formatCurrency(bstTotals.costs) + '</strong></td>' +
+    '<td class="col-downturn"><strong>' + formatCurrency(dTotals.costs) + '</strong></td>' +
+    (showDeltas ? '<td class="col-best"></td><td class="col-downturn"></td>' : '') + '</tr>' +
+    '<tr class="total-row"><td><strong>TOTAL REVENUE</strong></td>' +
+    '<td class="col-base"><strong>' + formatCurrency(bTotals.revenue) + '</strong></td>' +
+    '<td class="col-best"><strong>' + formatCurrency(bstTotals.revenue) + '</strong></td>' +
+    '<td class="col-downturn"><strong>' + formatCurrency(dTotals.revenue) + '</strong></td>' +
+    (showDeltas ? '<td class="col-best"></td><td class="col-downturn"></td>' : '') + '</tr>' +
+    '<tr class="net-row-comp"><td>NET (Revenue − Costs)</td>' +
+    '<td>' + formatCurrency(bTotals.net) + '</td>' +
+    '<td>' + formatCurrency(bstTotals.net) + '</td>' +
+    '<td>' + formatCurrency(dTotals.net) + '</td>' +
+    (showDeltas ? '<td>' + (bstTotals.net - bTotals.net >= 0 ? '+' : '') + formatCurrency(bstTotals.net - bTotals.net) + '</td>' +
+    '<td>' + (dTotals.net - bTotals.net >= 0 ? '+' : '') + formatCurrency(dTotals.net - bTotals.net) + '</td>' : '') +
+    '</tr></tbody></table></div>';
+}
+
+function renderScenarioEditor(el, scenarioKey) {
+  var scenario = state.scenarios[scenarioKey];
+  if (!scenario) return;
+  var visibleCats = getVisibleCategories(state);
+
+  var mRows = visibleCats.map(function(cat) {
+    var mult = scenario.multipliers[cat.name] || 1;
+    var pct = Math.round(mult * 100);
+    return '<div class="multiplier-row">' +
+      '<div class="multiplier-label"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + escHtml(cat.color) + ';margin-right:6px;"></span>' + escHtml(cat.name) + ' <span class="type-badge ' + (cat.type==='cost'?'type-cost':'type-revenue') + '">' + cat.type + '</span></div>' +
+      '<input class="multiplier-input" type="number" min="0" max="500" value="' + pct + '" ' +
+      'onchange="updateMultiplier(\'' + scenarioKey + '\',\'' + escHtml(cat.name) + '\',this.value)">' +
+      '<span class="multiplier-pct">%</span>' +
+      (pct !== 100 ? '<span style="font-size:10px;color:' + (pct>100?'var(--red)':'var(--green)') + ';">' + (pct>100?'▲ +':'▼ ') + (pct-100) + '%</span>' : '') +
+      '</div>';
+  }).join('');
+
+  var totals = calcScenarioTotals(state, scenarioKey);
+
+  el.innerHTML = '<div style="max-width:600px;">' +
+    '<div class="scenario-section">' +
+    '<div class="form-group"><label class="form-label">Scenario Label</label>' +
+    '<input class="form-input" value="' + escHtml(scenario.label) + '" onchange="updateScenarioLabel(\'' + scenarioKey + '\',this.value)" style="max-width:260px;"></div>' +
+    '<div class="form-group"><label class="form-label">Description</label>' +
+    '<textarea class="form-textarea" onchange="updateScenarioDesc(\'' + scenarioKey + '\',this.value)" style="min-height:48px;">' + escHtml(scenario.description) + '</textarea></div>' +
+    '</div>' +
+    '<div class="scenario-section"><h3>Category Multipliers</h3>' +
+    '<div class="form-hint" style="margin-bottom:12px;">Set 100% = no change, 110% = 10% increase, 80% = 20% reduction.</div>' +
+    mRows + '</div>' +
+    '<div class="scenario-section"><h3>Summary</h3>' +
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;">' +
+    '<div><div class="metric-label">Total Costs</div><div class="metric-value" style="font-size:20px;">' + formatCurrency(totals.costs) + '</div></div>' +
+    '<div><div class="metric-label">Total Revenue</div><div class="metric-value" style="font-size:20px;">' + formatCurrency(totals.revenue) + '</div></div>' +
+    '<div><div class="metric-label">Net</div><div class="metric-value" style="font-size:20px;color:' + (totals.net>=0?'var(--green)':'var(--red)') + '">' + formatCurrency(totals.net) + '</div></div>' +
+    '</div></div></div>';
+}
+
+// ================================================================
+// RENDER: PROCUREMENT VIEW (BT.07)
+// ================================================================
+function renderProcurementView() {
+  var tbody = document.getElementById('procurement-tbody');
+  if (!tbody) return;
+
+  var counts = { all: 0, unmatched: 0, uninvoiced: 0, pending_confirm: 0, confirmed: 0 };
+
+  var costItems = state.lineItems.filter(function(i) {
+    var cat = getCategoryById(state, i.categoryId);
+    return cat && cat.type === 'cost';
+  });
+
+  costItems.forEach(function(item) {
+    var s = getProcurementStatus(item);
+    counts.all++;
+    if (counts[s] !== undefined) counts[s]++;
+  });
+
+  // Update filter badges
+  ['all','unmatched','uninvoiced','pending_confirm','confirmed'].forEach(function(k) {
+    var span = document.getElementById('pfc-' + (k==='pending_confirm'?'pending':k));
+    if (span) span.textContent = counts[k] || 0;
+    var btn = document.getElementById('pf-' + (k==='pending_confirm'?'pending':k));
+    if (btn) btn.className = 'filter-btn' + (procFilter === k ? ' active' : '');
+  });
+  // Fix "all" btn
+  var allBtn = document.getElementById('pf-all');
+  if (allBtn) allBtn.className = 'filter-btn' + (procFilter === 'all' ? ' active' : '');
+
+  var filtered = costItems.filter(function(item) {
+    if (procFilter === 'all') return true;
+    return getProcurementStatus(item) === procFilter;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">📋</div>' +
+      '<h3>No items match this filter</h3></div></td></tr>';
+    return;
+  }
+
+  var rows = filtered.map(function(item) {
+    var cat = getCategoryById(state, item.categoryId);
+    var catName = cat ? cat.name : '—';
+    var status = getProcurementStatus(item);
+    return '<tr class="item-row">' +
+      '<td>' + escHtml(item.description) + '</td>' +
+      '<td style="font-size:12px;">' + escHtml(catName) + '</td>' +
+      '<td>' + formatCurrency(item.budget||0) + '</td>' +
+      '<td>' + formatCurrency(item.actual||0) + '</td>' +
+      '<td style="font-size:12px;font-family:monospace;">' + (escHtml(item.poNumber)||'<span style="color:var(--text-light)">—</span>') + '</td>' +
+      '<td style="font-size:12px;font-family:monospace;">' + (escHtml(item.invoiceRef)||'<span style="color:var(--text-light)">—</span>') + '</td>' +
+      '<td>' + procBadgeHtml(status) + '</td>' +
+      '<td class="no-print">' +
+      '<button class="btn btn-ghost btn-icon btn-sm" onclick="openItemModal(\'' + item.id + '\',null)" title="Edit">✏</button>' +
+      '</td></tr>';
+  });
+
+  tbody.innerHTML = rows.join('');
+}
+
+// ================================================================
+// RENDER: CATEGORIES VIEW (BT.02)
+// ================================================================
+function renderCategoriesView() {
+  var el = document.getElementById('categories-list');
+  if (!el) return;
+
+  var costCats = state.categories.filter(function(c) { return c.type === 'cost'; }).sort(function(a,b) { return a.order-b.order; });
+  var revCats = state.categories.filter(function(c) { return c.type === 'revenue'; }).sort(function(a,b) { return a.order-b.order; });
+
+  function renderGroup(cats, title) {
+    if (!cats.length) return '';
+    var html = '<div style="margin-bottom:24px;">' +
+      '<h3 style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">' + title + '</h3>' +
+      '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">';
+    cats.forEach(function(cat, idx) {
+      var itemCount = state.lineItems.filter(function(i) { return i.categoryId === cat.id; }).length;
+      html += '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:' + (idx<cats.length-1?'1px solid var(--border)':'none') + ';' + (cat.isHidden?'opacity:0.5;':'') + '">' +
+        '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + escHtml(cat.color) + ';flex-shrink:0;"></span>' +
+        '<span style="flex:1;font-size:13px;font-weight:500;' + (cat.isHidden?'text-decoration:line-through;color:var(--text-muted);':'') + '">' + escHtml(cat.name) + '</span>' +
+        '<span style="font-size:11px;color:var(--text-muted);">' + itemCount + ' item' + (itemCount!==1?'s':'') + '</span>' +
+        (cat.isDefault ? '<span style="font-size:10px;color:var(--text-muted);background:var(--bg);border-radius:4px;padding:1px 5px;">default</span>' : '') +
+        '<div class="no-print" style="display:flex;gap:4px;">' +
+        (idx > 0 ? '<button class="btn btn-ghost btn-icon btn-sm" onclick="moveCategoryUp(\'' + cat.id + '\')" title="Move up">▲</button>' : '<button class="btn btn-ghost btn-icon btn-sm" disabled>▲</button>') +
+        (idx < cats.length-1 ? '<button class="btn btn-ghost btn-icon btn-sm" onclick="moveCategoryDown(\'' + cat.id + '\')" title="Move down">▼</button>' : '<button class="btn btn-ghost btn-icon btn-sm" disabled>▼</button>') +
+        '<button class="btn btn-ghost btn-icon btn-sm" onclick="openCategoryModal(\'' + cat.id + '\')" title="Edit">✏</button>' +
+        '<button class="btn btn-ghost btn-icon btn-sm" onclick="toggleCategoryHidden(\'' + cat.id + '\')" title="' + (cat.isHidden?'Show':'Hide') + '">' + (cat.isHidden?'👁':'🙈') + '</button>' +
+        (!cat.isDefault ? '<button class="btn btn-ghost btn-icon btn-sm" onclick="deleteCategory(\'' + cat.id + '\')" title="Delete" style="color:var(--red)">✕</button>' : '') +
+        '</div></div>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
+  el.innerHTML = renderGroup(costCats, 'Cost Categories') + renderGroup(revCats, 'Revenue Categories');
+}
+
+// ================================================================
+// MASTER RENDER
+// ================================================================
+function renderAll() {
+  renderHeader();
+  renderMetricBar();
+  renderBudgetTable();
+  if (activeTab === 'scenarios') renderScenarios();
+  if (activeTab === 'procurement') renderProcurementView();
+  if (activeTab === 'categories') renderCategoriesView();
+}
+
+// ================================================================
+// TAB SWITCHING
+// ================================================================
+function switchTab(tab) {
+  activeTab = tab;
+  ['budget','scenarios','procurement','categories'].forEach(function(t) {
+    var btn = document.getElementById('tab-' + t);
+    var view = document.getElementById('view-' + t);
+    if (btn) btn.className = 'tab-btn' + (t === tab ? ' active' : '');
+    if (view) view.className = 'view' + (t === tab ? ' active' : '');
+  });
+  if (tab === 'scenarios') renderScenarios();
+  if (tab === 'procurement') renderProcurementView();
+  if (tab === 'categories') renderCategoriesView();
+}
+
+function switchScenarioTab(key) {
+  activeScenarioTab = key;
+  renderScenarios();
+}
+
+function toggleDeltaColumns() {
+  showDeltas = !showDeltas;
+  var btn = document.getElementById('delta-toggle');
+  if (btn) btn.textContent = showDeltas ? 'Hide Deltas' : 'Show Deltas';
+  renderScenarios();
+}
+
+// ================================================================
+// BUDGET TABLE CONTROLS
+// ================================================================
+function setBudgetFilter(f) {
+  budgetFilter = f;
+  ['all','cost','revenue','issues'].forEach(function(k) {
+    var btn = document.getElementById('filter-' + k);
+    if (btn) btn.className = 'filter-btn' + (k === f ? ' active' : '');
+  });
+  renderBudgetTable();
+}
+
+function setBudgetSort(v) {
+  budgetSort = v;
+  renderBudgetTable();
+}
+
+function toggleCategory(catId) {
+  collapsedCategories[catId] = !collapsedCategories[catId];
+  renderBudgetTable();
+}
+
+// ================================================================
+// INLINE EDITING (BT.04)
+// ================================================================
+function startInlineEdit(td, itemId, field) {
+  td.classList.add('editing');
+  var input = td.querySelector('.cell-edit');
+  if (input) { input.focus(); input.select(); }
+}
+
+function finishInlineEdit(input, itemId, field) {
+  var td = input.closest('td');
+  if (!td) return;
+  td.classList.remove('editing');
+  var val = parseCurrencyInput(input.value);
+  var item = state.lineItems.find(function(i) { return i.id === itemId; });
+  if (!item) return;
+  item[field] = val;
+  recomputeItem(item, state.categories, state.settings);
+  saveState(state);
+  renderAll();
+}
+
+function handleInlineKey(e, input, itemId, field) {
+  if (e.key === 'Enter') { e.preventDefault(); finishInlineEdit(input, itemId, field); }
+  if (e.key === 'Escape') { e.preventDefault(); input.closest('td').classList.remove('editing'); }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    finishInlineEdit(input, itemId, field);
+    // Move to next cell: budget -> actual -> next item budget
+    var nextField = field === 'budget' ? 'actual' : 'budget';
+    var nextItemId = itemId;
+    if (field === 'actual') {
+      var idx = state.lineItems.findIndex(function(i) { return i.id === itemId; });
+      if (idx < state.lineItems.length - 1) nextItemId = state.lineItems[idx+1].id;
+    }
+    setTimeout(function() {
+      var nextTd = document.querySelector('td.' + nextField + '-cell[data-item-id="' + nextItemId + '"]');
+      if (nextTd) startInlineEdit(nextTd, nextItemId, nextField);
+    }, 50);
+  }
+}
+
+function handleQuickAdd(e, input, catId) {
+  if (e.key === 'Enter' && input.value.trim()) {
+    var desc = input.value.trim();
+    var newItem = {
+      id: uuid(), categoryId: catId, description: desc,
+      budget: 0, actual: 0, variance: 0, variancePct: 0, status: 'grey',
+      poNumber: '', invoiceRef: '', supplierRef: '', notes: '',
+      isConfirmed: false, tags: [],
+      scenarioOverrides: { best: null, downturn: null }
+    };
+    state.lineItems.push(newItem);
+    saveState(state);
+    input.value = '';
+    renderAll();
+  }
+}
+
+// ================================================================
+// PROCUREMENT FILTER
+// ================================================================
+function setProcFilter(f) {
+  procFilter = f;
+  renderProcurementView();
+}
+
+// ================================================================
+// ITEM MODAL CRUD (BT.03)
+// ================================================================
+function openItemModal(itemId, defaultCatId) {
+  editingItemId = itemId;
+  var modal = document.getElementById('item-modal');
+  var title = document.getElementById('item-modal-title');
+  var sym = EVENTHIVE_CONFIG.currencySymbol || '£';
+  ['item-budget-sym','item-actual-sym','item-best-sym','item-downturn-sym'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.textContent = sym;
+  });
+
+  // Populate category dropdown
+  var catSel = document.getElementById('item-category');
+  catSel.innerHTML = '';
+  state.categories.filter(function(c) { return !c.isHidden; }).sort(function(a,b) { return a.order-b.order; }).forEach(function(cat) {
+    var opt = document.createElement('option');
+    opt.value = cat.id;
+    opt.textContent = cat.name + ' (' + cat.type + ')';
+    catSel.appendChild(opt);
+  });
+
+  if (itemId) {
+    var item = state.lineItems.find(function(i) { return i.id === itemId; });
+    if (!item) return;
+    if (title) title.textContent = 'Edit Line Item';
+    document.getElementById('item-desc').value = item.description || '';
+    catSel.value = item.categoryId;
+    document.getElementById('item-budget').value = item.budget || 0;
+    document.getElementById('item-actual').value = item.actual || 0;
+    document.getElementById('item-confirmed').checked = !!item.isConfirmed;
+    document.getElementById('item-notes').value = item.notes || '';
+    document.getElementById('item-po').value = item.poNumber || '';
+    document.getElementById('item-invoice').value = item.invoiceRef || '';
+    document.getElementById('item-supplier').value = item.supplierRef || '';
+    var overrides = item.scenarioOverrides || {};
+    document.getElementById('item-best-override').value = overrides.best !== null && overrides.best !== undefined ? overrides.best : '';
+    document.getElementById('item-downturn-override').value = overrides.downturn !== null && overrides.downturn !== undefined ? overrides.downturn : '';
+  } else {
+    if (title) title.textContent = 'Add Line Item';
+    document.getElementById('item-desc').value = '';
+    if (defaultCatId) catSel.value = defaultCatId;
+    document.getElementById('item-budget').value = '';
+    document.getElementById('item-actual').value = '';
+    document.getElementById('item-confirmed').checked = false;
+    document.getElementById('item-notes').value = '';
+    document.getElementById('item-po').value = '';
+    document.getElementById('item-invoice').value = '';
+    document.getElementById('item-supplier').value = '';
+    document.getElementById('item-best-override').value = '';
+    document.getElementById('item-downturn-override').value = '';
+  }
+
+  modal.style.display = 'flex';
+  setTimeout(function() { document.getElementById('item-desc').focus(); }, 100);
+}
+
+function closeItemModal() {
+  document.getElementById('item-modal').style.display = 'none';
+  editingItemId = null;
+}
+
+function saveItem() {
+  var desc = document.getElementById('item-desc').value.trim();
+  if (!desc) { alert('Description is required.'); return; }
+  var catId = document.getElementById('item-category').value;
+  if (!catId) { alert('Please select a category.'); return; }
+
+  var budget = parseCurrencyInput(document.getElementById('item-budget').value);
+  var actual = parseCurrencyInput(document.getElementById('item-actual').value);
+  var confirmed = document.getElementById('item-confirmed').checked;
+  var notes = document.getElementById('item-notes').value.trim();
+  var po = document.getElementById('item-po').value.trim().toUpperCase().replace(/\s+/g,'');
+  var invoice = document.getElementById('item-invoice').value.trim();
+  var supplier = document.getElementById('item-supplier').value.trim();
+  var bestOvRaw = document.getElementById('item-best-override').value.trim();
+  var downOvRaw = document.getElementById('item-downturn-override').value.trim();
+  var bestOv = bestOvRaw !== '' ? parseCurrencyInput(bestOvRaw) : null;
+  var downOv = downOvRaw !== '' ? parseCurrencyInput(downOvRaw) : null;
+
+  if (editingItemId) {
+    var item = state.lineItems.find(function(i) { return i.id === editingItemId; });
+    if (item) {
+      item.description = desc; item.categoryId = catId;
+      item.budget = budget; item.actual = actual;
+      item.isConfirmed = confirmed; item.notes = notes;
+      item.poNumber = po; item.invoiceRef = invoice; item.supplierRef = supplier;
+      item.scenarioOverrides = { best: bestOv, downturn: downOv };
+      recomputeItem(item, state.categories, state.settings);
+    }
+  } else {
+    var newItem = {
+      id: uuid(), categoryId: catId, description: desc,
+      budget: budget, actual: actual, variance: 0, variancePct: 0, status: 'grey',
+      poNumber: po, invoiceRef: invoice, supplierRef: supplier, notes: notes,
+      isConfirmed: confirmed, tags: [],
+      scenarioOverrides: { best: bestOv, downturn: downOv }
+    };
+    recomputeItem(newItem, state.categories, state.settings);
+    state.lineItems.push(newItem);
+  }
+
+  // Alert on red items
+  if (state.settings.alertOnRedVariance) {
+    var redItem = state.lineItems.find(function(i) { return i.id === (editingItemId || state.lineItems[state.lineItems.length-1].id); });
+    if (redItem && redItem.status === 'red') {
+      console.warn('Budget alert: ' + redItem.description + ' is RED variance');
+    }
+  }
+
+  saveState(state);
+  closeItemModal();
+  renderAll();
+  // Write Post-Event Report bridge on every save
+  writePostEventBridge();
+}
+
+function deleteItem(itemId) {
+  showConfirm('Delete Item', 'Are you sure you want to delete this line item? This cannot be undone.', 'Delete', function(confirmed) {
+    if (!confirmed) return;
+    state.lineItems = state.lineItems.filter(function(i) { return i.id !== itemId; });
+    saveState(state);
+    renderAll();
+  });
+}
+
+// ================================================================
+// CATEGORY MODAL CRUD (BT.02)
+// ================================================================
+var COLOR_SWATCHES = ['#EF4444','#F97316','#F59E0B','#10B981','#3B82F6','#8B5CF6','#EC4899','#14B8A6','#6366F1','#A855F7','#64748B','#9CA3AF','#22C55E','#059669'];
+
+function openCategoryModal(catId) {
+  editingCategoryId = catId;
+  var modal = document.getElementById('category-modal');
+  var title = document.getElementById('category-modal-title');
+
+  // Build color swatches
+  var swatches = document.getElementById('cat-color-swatches');
+  if (swatches) {
+    swatches.innerHTML = COLOR_SWATCHES.map(function(c) {
+      return '<span class="color-swatch" style="background:' + c + ';" onclick="document.getElementById(\'cat-color\').value=\'' + c + '\';renderSwatches(\'' + c + '\')"></span>';
+    }).join('');
+  }
+
+  if (catId) {
+    var cat = state.categories.find(function(c) { return c.id === catId; });
+    if (!cat) return;
+    if (title) title.textContent = 'Edit Category';
+    document.getElementById('cat-name').value = cat.name;
+    document.getElementById('cat-type').value = cat.type;
+    document.getElementById('cat-type').disabled = !!cat.isDefault;
+    document.getElementById('cat-color').value = cat.color || '#3B82F6';
+    renderSwatches(cat.color);
+  } else {
+    if (title) title.textContent = 'Add Category';
+    document.getElementById('cat-name').value = '';
+    document.getElementById('cat-type').value = 'cost';
+    document.getElementById('cat-type').disabled = false;
+    document.getElementById('cat-color').value = '#6366F1';
+    renderSwatches('#6366F1');
+  }
+
+  modal.style.display = 'flex';
+  setTimeout(function() { document.getElementById('cat-name').focus(); }, 100);
+}
+
+function renderSwatches(selectedColor) {
+  var swatches = document.getElementById('cat-color-swatches');
+  if (!swatches) return;
+  Array.from(swatches.querySelectorAll('.color-swatch')).forEach(function(el) {
+    var c = el.style.background.replace(/\s/g,'');
+    el.className = 'color-swatch' + (el.style.background === selectedColor || el.getAttribute('onclick') && el.getAttribute('onclick').indexOf(selectedColor) >= 0 ? ' selected' : '');
+  });
+}
+
+function closeCategoryModal() {
+  document.getElementById('category-modal').style.display = 'none';
+  editingCategoryId = null;
+}
+
+function saveCategory() {
+  var name = document.getElementById('cat-name').value.trim();
+  if (!name) { alert('Category name is required.'); return; }
+  var type = document.getElementById('cat-type').value;
+  var color = document.getElementById('cat-color').value;
+
+  if (editingCategoryId) {
+    var cat = state.categories.find(function(c) { return c.id === editingCategoryId; });
+    if (cat) { cat.name = name; cat.color = color; if (!cat.isDefault) cat.type = type; }
+  } else {
+    var maxOrder = state.categories.reduce(function(m,c) { return Math.max(m,c.order); }, 0);
+    state.categories.push({ id: uuid(), name: name, type: type, order: maxOrder + 1, color: color, isDefault: false, isHidden: false });
+  }
+
+  saveState(state);
+  closeCategoryModal();
+  renderAll();
+}
+
+function deleteCategory(catId) {
+  var cat = state.categories.find(function(c) { return c.id === catId; });
+  if (!cat || cat.isDefault) return;
+  var itemCount = state.lineItems.filter(function(i) { return i.categoryId === catId; }).length;
+  var msg = itemCount > 0
+    ? 'Delete "' + cat.name + '"? It has ' + itemCount + ' item(s). Items will be removed too.'
+    : 'Delete "' + cat.name + '"?';
+  showConfirm('Delete Category', msg, 'Delete', function(confirmed) {
+    if (!confirmed) return;
+    state.categories = state.categories.filter(function(c) { return c.id !== catId; });
+    state.lineItems = state.lineItems.filter(function(i) { return i.categoryId !== catId; });
+    saveState(state);
+    renderAll();
+  });
+}
+
+function toggleCategoryHidden(catId) {
+  var cat = state.categories.find(function(c) { return c.id === catId; });
+  if (cat) { cat.isHidden = !cat.isHidden; saveState(state); renderAll(); }
+}
+
+function moveCategoryUp(catId) {
+  var cat = state.categories.find(function(c) { return c.id === catId; });
+  if (!cat || cat.order <= 1) return;
+  var prev = state.categories.filter(function(c) { return c.type === cat.type && c.order < cat.order; }).sort(function(a,b) { return b.order - a.order; })[0];
+  if (prev) { var t = cat.order; cat.order = prev.order; prev.order = t; saveState(state); renderAll(); }
+}
+
+function moveCategoryDown(catId) {
+  var cat = state.categories.find(function(c) { return c.id === catId; });
+  if (!cat) return;
+  var next = state.categories.filter(function(c) { return c.type === cat.type && c.order > cat.order; }).sort(function(a,b) { return a.order - b.order; })[0];
+  if (next) { var t = cat.order; cat.order = next.order; next.order = t; saveState(state); renderAll(); }
+}
+
+// ================================================================
+// SCENARIO CONTROLS (BT.06)
+// ================================================================
+function updateMultiplier(scenarioKey, catName, pctValue) {
+  var pct = parseFloat(pctValue) || 100;
+  var mult = pct / 100;
+  if (!state.scenarios[scenarioKey]) return;
+  if (mult === 1) {
+    delete state.scenarios[scenarioKey].multipliers[catName];
+  } else {
+    state.scenarios[scenarioKey].multipliers[catName] = mult;
+  }
+  saveState(state);
+  renderScenarios();
+  renderMetricBar();
+}
+
+function updateScenarioLabel(key, val) {
+  if (state.scenarios[key]) { state.scenarios[key].label = val; saveState(state); }
+}
+
+function updateScenarioDesc(key, val) {
+  if (state.scenarios[key]) { state.scenarios[key].description = val; saveState(state); }
+}
+
+// ================================================================
+// SETTINGS MODAL (BT.01)
+// ================================================================
+function openSettingsModal() {
+  document.getElementById('settings-event-name').value = state.eventName || '';
+  document.getElementById('settings-attendees').value = state.attendeeTarget || '';
+  document.getElementById('settings-amber').value = state.settings.amberThresholdPct || 5;
+  document.getElementById('settings-red').value = state.settings.redThresholdPct || 15;
+  document.getElementById('settings-alert-red').checked = !!state.settings.alertOnRedVariance;
+  document.getElementById('settings-modal').style.display = 'flex';
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').style.display = 'none';
+}
+
+function saveSettings() {
+  state.eventName = document.getElementById('settings-event-name').value.trim() || state.eventName;
+  state.attendeeTarget = parseInt(document.getElementById('settings-attendees').value) || 0;
+  state.settings.amberThresholdPct = parseInt(document.getElementById('settings-amber').value) || 5;
+  state.settings.redThresholdPct = parseInt(document.getElementById('settings-red').value) || 15;
+  state.settings.alertOnRedVariance = document.getElementById('settings-alert-red').checked;
+  // Recompute all RAG with new thresholds
+  state.lineItems.forEach(function(item) { recomputeItem(item, state.categories, state.settings); });
+  saveState(state);
+  closeSettingsModal();
+  renderAll();
+}
+
+function loadSampleData() {
+  if (!confirm('Load TechSummit 2026 sample data? This will replace all current budget data.')) return;
+  state = getSampleData();
+  state.lineItems.forEach(function(item) { recomputeItem(item, state.categories, state.settings); });
+  saveState(state);
+  closeSettingsModal();
+  renderAll();
+}
+
+function clearAllData() {
+  if (!confirm('Clear ALL budget data? This cannot be undone.')) return;
+  state = createDefaultState();
+  saveState(state);
+  closeSettingsModal();
+  renderAll();
+}
+
+// ================================================================
+// CONFIRM DIALOG
+// ================================================================
+function showConfirm(title, message, okLabel, callback) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-message').textContent = message;
+  document.getElementById('confirm-ok-btn').textContent = okLabel || 'Delete';
+  confirmResolveCallback = callback;
+  document.getElementById('confirm-modal').style.display = 'flex';
+}
+
+function confirmResolve(value) {
+  document.getElementById('confirm-modal').style.display = 'none';
+  if (confirmResolveCallback) { var cb = confirmResolveCallback; confirmResolveCallback = null; cb(value); }
+}
+
+// ================================================================
+// EXPORT — CSV (BT.08)
+// ================================================================
+function exportCSV() {
+  var headers = ['Category','Type','Description','Budget','Actual','Variance','Variance %','RAG','PO Number','Invoice Ref','Confirmed','Notes'];
+  var rows = [headers];
+
+  getVisibleCategories(state).forEach(function(cat) {
+    state.lineItems.filter(function(i) { return i.categoryId === cat.id; }).forEach(function(item) {
+      function csvCell(v) { v = String(v||''); return '"' + v.replace(/"/g,'""') + '"'; }
+      rows.push([
+        csvCell(cat.name), csvCell(cat.type), csvCell(item.description),
+        item.budget||0, item.actual||0, item.variance||0,
+        (item.variancePct||0).toFixed(1) + '%',
+        csvCell(item.status), csvCell(item.poNumber), csvCell(item.invoiceRef),
+        item.isConfirmed ? 'Yes' : 'No', csvCell(item.notes)
+      ]);
+    });
+  });
+
+  var csv = rows.map(function(r) { return r.join(','); }).join('\n');
+  var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = (state.eventName || 'budget').replace(/[^a-z0-9]/gi,'_') + '_budget.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ================================================================
+// EXPORT — PDF/PRINT (BT.08)
+// ================================================================
+function exportPrint() {
+  var costItems = state.lineItems.filter(function(i) { var c=getCategoryById(state,i.categoryId); return c&&c.type==='cost'; });
+  var revItems = state.lineItems.filter(function(i) { var c=getCategoryById(state,i.categoryId); return c&&c.type==='revenue'; });
+  var totalBudget = costItems.reduce(function(s,i){ return s+(i.budget||0); },0);
+  var totalActual = costItems.reduce(function(s,i){ return s+(i.actual||0); },0);
+  var totalRevBudget = revItems.reduce(function(s,i){ return s+(i.budget||0); },0);
+  var totalRevActual = revItems.reduce(function(s,i){ return s+(i.actual||0); },0);
+  var attendees = state.attendeeTarget || 0;
+  var bTotals = calcScenarioTotals(state,'base');
+  var bstTotals = calcScenarioTotals(state,'best');
+  var dTotals = calcScenarioTotals(state,'downturn');
+
+  var printHTML = '<!DOCTYPE html><html><head><title>' + escHtml(state.eventName) + ' — Budget Summary</title>' +
+    '<style>body{font-family:sans-serif;font-size:12px;color:#0f172a;margin:0;padding:20px;}' +
+    'h1{font-size:20px;font-weight:800;margin-bottom:4px;}' +
+    'p{color:#64748b;font-size:11px;margin-bottom:16px;}' +
+    '.metrics{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;}' +
+    '.m{flex:1;min-width:100px;}.ml{font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b;}' +
+    '.mv{font-size:16px;font-weight:700;}' +
+    'table{width:100%;border-collapse:collapse;margin-bottom:16px;}' +
+    'th{background:#f1f5f9;padding:6px 8px;font-size:10px;text-align:right;border-bottom:2px solid #e2e8f0;}' +
+    'th:first-child{text-align:left;}td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;text-align:right;}' +
+    'td:first-child{text-align:left;}.total{font-weight:700;background:#e2e8f0;}' +
+    '.net{background:#0f172a;color:white;font-weight:700;}' +
+    'h2{font-size:13px;font-weight:700;margin:16px 0 8px;}' +
+    '@page{margin:15mm;}</style></head><body>' +
+    '<h1>' + escHtml(state.eventName) + ' — Budget Summary</h1>' +
+    '<p>Generated: ' + new Date().toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'}) + '</p>' +
+    '<div class="metrics">' +
+    '<div class="m"><div class="ml">Total Cost Budget</div><div class="mv">' + formatCurrency(totalBudget) + '</div></div>' +
+    '<div class="m"><div class="ml">Total Cost Actual</div><div class="mv">' + formatCurrency(totalActual) + '</div></div>' +
+    '<div class="m"><div class="ml">Revenue Budget</div><div class="mv">' + formatCurrency(totalRevBudget) + '</div></div>' +
+    '<div class="m"><div class="ml">Revenue Actual</div><div class="mv">' + formatCurrency(totalRevActual) + '</div></div>' +
+    '<div class="m"><div class="ml">Net Margin</div><div class="mv">' + formatCurrency(totalRevActual - totalActual) + '</div></div>' +
+    (attendees > 0 ? '<div class="m"><div class="ml">Cost/Attendee</div><div class="mv">' + formatCurrency(totalActual/attendees) + '</div></div>' : '') +
+    '</div>' +
+    '<h2>Category Summary</h2>' +
+    '<table><thead><tr><th>Category</th><th>Budget</th><th>Actual</th><th>Variance</th><th>RAG</th></tr></thead><tbody>';
+
+  getVisibleCategories(state).forEach(function(cat) {
+    var catItems = state.lineItems.filter(function(i) { return i.categoryId === cat.id; });
+    var sub = calcSubtotals(catItems);
+    var v = sub.budget - sub.actual;
+    var rag = calculateRAG({budget:sub.budget,actual:sub.actual}, state.settings, cat.type);
+    printHTML += '<tr><td>' + escHtml(cat.name) + '</td><td>' + formatCurrency(sub.budget) + '</td>' +
+      '<td>' + formatCurrency(sub.actual) + '</td><td>' + (v>=0?'+':'') + formatCurrency(v) + '</td>' +
+      '<td>' + (rag==='green'?'🟢':rag==='amber'?'🟡':rag==='red'?'🔴':'⬜') + '</td></tr>';
+  });
+
+  printHTML += '<tr class="total"><td>TOTAL COSTS</td><td>' + formatCurrency(totalBudget) + '</td><td>' + formatCurrency(totalActual) + '</td><td></td><td></td></tr>' +
+    '<tr class="total"><td>TOTAL REVENUE</td><td>' + formatCurrency(totalRevBudget) + '</td><td>' + formatCurrency(totalRevActual) + '</td><td></td><td></td></tr>' +
+    '<tr class="net"><td>NET</td><td>' + formatCurrency(totalRevBudget-totalBudget) + '</td><td>' + formatCurrency(totalRevActual-totalActual) + '</td><td></td><td></td></tr>' +
+    '</tbody></table>' +
+    '<h2>Scenario Comparison</h2>' +
+    '<table><thead><tr><th>Scenario</th><th>Costs</th><th>Revenue</th><th>Net</th></tr></thead><tbody>' +
+    '<tr><td>Base Case</td><td>' + formatCurrency(bTotals.costs) + '</td><td>' + formatCurrency(bTotals.revenue) + '</td><td>' + formatCurrency(bTotals.net) + '</td></tr>' +
+    '<tr><td>Best Case</td><td>' + formatCurrency(bstTotals.costs) + '</td><td>' + formatCurrency(bstTotals.revenue) + '</td><td>' + formatCurrency(bstTotals.net) + '</td></tr>' +
+    '<tr><td>Downturn</td><td>' + formatCurrency(dTotals.costs) + '</td><td>' + formatCurrency(dTotals.revenue) + '</td><td>' + formatCurrency(dTotals.net) + '</td></tr>' +
+    '</tbody></table></body></html>';
+
+  var w = window.open('', '_blank');
+  if (w) { w.document.write(printHTML); w.document.close(); w.focus(); w.print(); }
+}
+
+// ================================================================
+// POST-EVENT REPORT BRIDGE (BT.08)
+// ================================================================
+function writePostEventBridge() {
+  try {
+    var costItems = state.lineItems.filter(function(i) { var c=getCategoryById(state,i.categoryId); return c&&c.type==='cost'; });
+    var revItems = state.lineItems.filter(function(i) { var c=getCategoryById(state,i.categoryId); return c&&c.type==='revenue'; });
+    var totalBudget = costItems.reduce(function(s,i){ return s+(i.budget||0); },0);
+    var totalActual = costItems.reduce(function(s,i){ return s+(i.actual||0); },0);
+    var totalRevBudget = revItems.reduce(function(s,i){ return s+(i.budget||0); },0);
+    var totalRevActual = revItems.reduce(function(s,i){ return s+(i.actual||0); },0);
+    var attendees = state.attendeeTarget || 1;
+
+    var topVariance = state.lineItems.slice()
+      .sort(function(a,b) { return Math.abs(b.variancePct||0) - Math.abs(a.variancePct||0); })
+      .slice(0, 5)
+      .map(function(i) { var c=getCategoryById(state,i.categoryId); return { description:i.description, category:c?c.name:'', budget:i.budget, actual:i.actual, variancePct:i.variancePct, rag:i.status }; });
+
+    var bridge = {
+      source: 'budget-tracker',
+      eventName: state.eventName,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        totalBudget: totalBudget, totalActual: totalActual,
+        variance: totalBudget - totalActual,
+        variancePct: totalBudget ? ((totalBudget-totalActual)/totalBudget*100) : 0,
+        totalRevenueBudget: totalRevBudget, totalRevenueActual: totalRevActual,
+        netMargin: totalRevBudget - totalBudget,
+        netActual: totalRevActual - totalActual,
+        costPerAttendee: totalActual / attendees,
+        revenuePerAttendee: totalRevActual / attendees,
+        attendeeTarget: state.attendeeTarget
+      },
+      categories: getVisibleCategories(state).map(function(cat) {
+        var items = state.lineItems.filter(function(i) { return i.categoryId === cat.id; });
+        var sub = calcSubtotals(items);
+        return { name: cat.name, type: cat.type, budget: sub.budget, actual: sub.actual, variance: sub.variance,
+          rag: calculateRAG({budget:sub.budget,actual:sub.actual}, state.settings, cat.type) };
+      }),
+      topVarianceItems: topVariance,
+      scenarios: {
+        base: calcScenarioTotals(state, 'base'),
+        best: calcScenarioTotals(state, 'best'),
+        downturn: calcScenarioTotals(state, 'downturn')
+      }
+    };
+
+    localStorage.setItem('eventhive_event_' + EVENT_SLUG + '_budget_report', JSON.stringify(bridge));
+  } catch(e) {}
+}
+
+// ================================================================
+// INIT
+// ================================================================
+document.addEventListener('DOMContentLoaded', function() {
+  // Update CSS variable from config
+  document.documentElement.style.setProperty('--primary', EVENTHIVE_CONFIG.primaryColor || '#3B82F6');
+
+  // Initial render
+  renderAll();
+
+  // Write Post-Event Report bridge on load
+  writePostEventBridge();
+});
+</script>
+
+
+
+</body>
+</html>

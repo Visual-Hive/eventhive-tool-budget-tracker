@@ -1,0 +1,110 @@
+{
+    "slug": "budget-tracker",
+    "name": "Event Budget Tracker",
+    "version": "1.0.0",
+    "description": "Financial planning and variance tracking with industry-standard cost categories, budget/actual/variance columns, RAG status per line item, scenario modelling (Best/Base/Downturn), PO & invoice tracking, key ratio dashboard, and CSV/PDF export.",
+    "category": "finance",
+    "difficulty": "intermediate",
+    "requires_backend": false,
+    "is_published": true,
+    "author": "Visual Hive",
+    "source_repo": "https://github.com/Visual-Hive/eventhive-tool-budget-tracker",
+    "tool_file": "tool.html",
+    "config_schema": {
+        "sections": [
+            {
+                "id": "branding",
+                "title": "Branding",
+                "description": "Customise to match your event brand.",
+                "fields": [
+                    {
+                        "id": "companyName",
+                        "type": "text",
+                        "label": "Company / Event Name",
+                        "placeholder": "e.g. TechSummit Events",
+                        "required": true,
+                        "default": "My Event"
+                    },
+                    {
+                        "id": "primaryColor",
+                        "type": "color",
+                        "label": "Primary Brand Colour",
+                        "default": "#3B82F6"
+                    }
+                ]
+            },
+            {
+                "id": "currency",
+                "title": "Currency",
+                "description": "Configure the currency used across the budget.",
+                "fields": [
+                    {
+                        "id": "currency",
+                        "type": "text",
+                        "label": "Currency Code (ISO 4217)",
+                        "placeholder": "GBP",
+                        "default": "GBP"
+                    },
+                    {
+                        "id": "currencySymbol",
+                        "type": "text",
+                        "label": "Currency Symbol",
+                        "placeholder": "£",
+                        "default": "£"
+                    },
+                    {
+                        "id": "currencyLocale",
+                        "type": "text",
+                        "label": "Currency Locale",
+                        "placeholder": "en-GB",
+                        "default": "en-GB"
+                    }
+                ]
+            },
+            {
+                "id": "thresholds",
+                "title": "Variance Thresholds",
+                "description": "Configure when budget variance turns amber or red.",
+                "fields": [
+                    {
+                        "id": "amberThresholdPct",
+                        "type": "number",
+                        "label": "Amber Variance Threshold (%)",
+                        "description": "Variance percentage at which a line item turns amber.",
+                        "default": 5,
+                        "min": 1,
+                        "max": 50
+                    },
+                    {
+                        "id": "redThresholdPct",
+                        "type": "number",
+                        "label": "Red Variance Threshold (%)",
+                        "description": "Variance percentage at which a line item turns red.",
+                        "default": 15,
+                        "min": 5,
+                        "max": 100
+                    },
+                    {
+                        "id": "defaultContingencyPct",
+                        "type": "number",
+                        "label": "Default Contingency (%)",
+                        "description": "Default contingency percentage added to total costs.",
+                        "default": 10,
+                        "min": 0,
+                        "max": 30
+                    }
+                ]
+            }
+        ]
+    },
+    "default_config": {
+        "companyName": "My Event",
+        "primaryColor": "#3B82F6",
+        "currency": "GBP",
+        "currencySymbol": "£",
+        "currencyLocale": "en-GB",
+        "amberThresholdPct": 5,
+        "redThresholdPct": 15,
+        "defaultContingencyPct": 10
+    }
+}
